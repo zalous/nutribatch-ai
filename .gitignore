@@ -1,0 +1,20 @@
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Obsidian workspace cache
+.obsidian/workspace*.json
+
+# Python virtual environment & cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+env/
+.venv/
+
+# Temporary files
+.DS_Store
+Thumbs.db
+
