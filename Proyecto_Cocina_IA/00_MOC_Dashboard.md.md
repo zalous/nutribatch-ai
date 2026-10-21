@@ -1,7 +1,7 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-0-diseno
-fecha_actualizacion: 2026-10-18
+estado: fase-1-completada
+fecha_actualizacion: 2026-10-19
 ---
 # Panel de Control y Contexto IA
 
@@ -19,18 +19,18 @@ fecha_actualizacion: 2026-10-18
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** Fase 1 - Configuración de Base de Datos (Supabase) y Esqueleto en Streamlit.
-- **Último avance:** Cierre definitivo de especificaciones en Obsidian (IA con lectura directa de los MDs como System Prompt, Lista de la Compra como segundo cerebro incluyendo extras/hogar, control de fecha exacta de cocinado de cada plato, meta de 1.700 kcal para Gonzalo y panel completo de vitaminas y minerales).
-- **Archivos de código creados:** Ninguno todavía.
-- **Próximo paso exacto:** Paso 1.1 (Crear archivo `AGENTS.md` y `supabase_init.sql` para crear las 5 tablas en Supabase).
+- **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets.
+- **Último avance:** Fase 1 completada al 100%. Base de datos Supabase inicializada con 5 tablas y políticas RLS, esqueleto Streamlit desplegado en la nube (`https://nutribatch-ai.streamlit.app/`) y repositorio GitHub sincronizado (`https://github.com/zalous/nutribatch-ai`).
+- **Archivos de código creados:** `AGENTS.md`, `supabase_init.sql`, `.gitignore`, `.streamlit/config.toml`, `.streamlit/secrets.toml`, `requirements.txt`, `database.py`, `app.py`, `views/p1_plan_y_compra.py`, `views/p2_cocinar_hoy.py`, `views/p3_asistente_voz.py`, `views/p4_salud_nutri.py`.
+- **Próximo paso exacto:** Paso 2.1 (Pantalla de Inventario: Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
 
 ---
 
 ## Roadmap de Construccion (Paso a Paso)
 
 ### Fase 1: Cimientos Cloud (Coste 0 euros)
-- [ ] **Paso 1.1:** Crear archivo `AGENTS.md` y script `supabase_init.sql` con las 5 tablas (`inventario`, `diccionario_tickets`, `recetas`, `registro_comidas`, `lista_compra`).
-- [ ] **Paso 1.2:** Crear archivos `requirements.txt`, `database.py` y `app.py` básico, subir a GitHub y conectar con Streamlit Community Cloud para verlo desde los dos móviles.
+- [x] **Paso 1.1:** Crear archivo `AGENTS.md` y script `supabase_init.sql` con las 5 tablas (`inventario`, `diccionario_tickets`, `recetas`, `registro_comidas`, `lista_compra`).
+- [x] **Paso 1.2:** Crear archivos `requirements.txt`, `database.py` y `app.py` básico, subir a GitHub y conectar con Streamlit Community Cloud para verlo desde los dos móviles.
 
 ### Fase 2: Despensa Aproximada, Control de Fechas de Cocinado y Tickets
 - [ ] **Paso 2.1:** Pantalla de Inventario (Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
