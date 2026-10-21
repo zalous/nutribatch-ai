@@ -1,7 +1,7 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-1-completada
-fecha_actualizacion: 2026-10-19
+estado: fase-2-en-progreso
+fecha_actualizacion: 2026-10-21
 ---
 # Panel de Control y Contexto IA
 
@@ -20,9 +20,9 @@ fecha_actualizacion: 2026-10-19
 
 ## ESTADO ACTUAL
 - **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets.
-- **Último avance:** Fase 1 completada al 100%. Base de datos Supabase inicializada con 5 tablas y políticas RLS, esqueleto Streamlit desplegado en la nube (`https://nutribatch-ai.streamlit.app/`) y repositorio GitHub sincronizado (`https://github.com/zalous/nutribatch-ai`).
-- **Archivos de código creados:** `AGENTS.md`, `supabase_init.sql`, `.gitignore`, `.streamlit/config.toml`, `.streamlit/secrets.toml`, `requirements.txt`, `database.py`, `app.py`, `views/p1_plan_y_compra.py`, `views/p2_cocinar_hoy.py`, `views/p3_asistente_voz.py`, `views/p4_salud_nutri.py`.
-- **Próximo paso exacto:** Paso 2.1 (Pantalla de Inventario: Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
+- **Último avance:** Paso 2.1 completado al 100%. Pantalla de inventario completa con las 4 ubicaciones (Nevera, Congelador, Despensa y Tápers Batch), semáforo visual de frescura de tápers según `fecha_cocinado` (🟢 0-2 días, 🟡 3-4 días, 🔴 5+ días), formulario de alta de alimentos y botón para gastar/eliminar consumos conectado con Supabase.
+- **Archivos de código creados/modificados:** `database.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
+- **Próximo paso exacto:** Paso 2.2 (Lector IA de Tickets: Foto/PDF/CSV de Mercadona, Lidl, Consum, Dia que cruza con `lista_compra`, filtra productos de hogar/limpieza, guarda pesos en `diccionario_tickets` y reparte frescos).
 
 ---
 
@@ -33,7 +33,7 @@ fecha_actualizacion: 2026-10-19
 - [x] **Paso 1.2:** Crear archivos `requirements.txt`, `database.py` y `app.py` básico, subir a GitHub y conectar con Streamlit Community Cloud para verlo desde los dos móviles.
 
 ### Fase 2: Despensa Aproximada, Control de Fechas de Cocinado y Tickets
-- [ ] **Paso 2.1:** Pantalla de Inventario (Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
+- [x] **Paso 2.1:** Pantalla de Inventario (Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
 - [ ] **Paso 2.2:** Lector IA de Tickets (Foto/PDF/CSV de Mercadona, Lidl, Consum, Dia) que cruza con la `lista_compra`, filtra productos de hogar/limpieza para no meterlos como comida, guarda pesos en `diccionario_tickets` y reparte frescos entre Nevera y Congelador.
 
 ### Fase 3: Motor IA Contextual, Recetas, Batch Cooking y Lista de la Compra (Segundo Cerebro)

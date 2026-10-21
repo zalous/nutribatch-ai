@@ -21,7 +21,6 @@ def test_connection() -> bool:
     """Verifica que la conexión a Supabase y las tablas responden correctamente."""
     try:
         supabase = get_supabase_client()
-        # Prueba una consulta ligera sobre inventario
         response = supabase.table("inventario").select("id").limit(1).execute()
         return True
     except Exception as e:
@@ -30,7 +29,7 @@ def test_connection() -> bool:
 
 
 # -----------------------------------------------------------------------------
-# Funciones básicas de Inventario
+# Funciones avanzadas de Inventario
 # -----------------------------------------------------------------------------
 def get_inventario(ubicacion: str = None):
     """Obtiene los elementos del inventario, opcionalmente filtrados por ubicación."""
@@ -46,6 +45,25 @@ def add_item_inventario(item_data: dict):
     """Añade un nuevo alimento al inventario."""
     supabase = get_supabase_client()
     response = supabase.table("inventario").insert(item_data).execute()
+    return response.data
+
+
+def delete_item_inventario(item_id: str):
+    """Elimina un alimento del inventario por su ID."""
+    supabase = get_supabase_client()
+    response = supabase.table("inventario").delete().eq("id", item_id).execute()
+    return response.data
+
+
+def update_item_inventario(item_id: str, update_data: dict):
+    """Actualiza datos de un ítem del inventario."""
+    supabase = get_supabase_client()
+    response = (
+        supabase.table("inventario")
+        .update(update_data)
+        .eq("id", item_id)
+        .execute()
+    )
     return response.data
 
 
