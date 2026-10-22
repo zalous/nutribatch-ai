@@ -20,9 +20,9 @@ fecha_actualizacion: 2026-10-21
 
 ## ESTADO ACTUAL
 - **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets.
-- **Último avance:** Paso 2.1 completado al 100%. Desglose de Fase 2 ampliado con dos tareas necesarias: parser sintáctico de texto de tickets (anti-cabeceras/totales) y configuración formal de Google Gemini API Key.
-- **Archivos de código creados/modificados:** `ai_engine.py`, `database.py`, `views/p1_plan_y_compra.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md`.
-- **Próximo paso exacto:** Paso 2.2 (Analizador sintáctico robusto de texto/CSV para tickets: filtrado de cabeceras de supermercado, direcciones, CIFs, líneas de IVA y formas de pago, separación de productos de hogar y extracción limpia de alimentos).
+- **Último avance:** Paso 2.2 completado. Parser sintáctico robusto de tickets en `ai_engine.py` (texto/CSV/PDF): descarta cabeceras, CIF, direcciones, códigos postales, fechas/horas, IVA, subtotales, totales, formas de pago y descuentos; separa hogar de comida; asigna nevera/congelador/despensa; detecta indivisibles y pesos. Eliminado el fallback que inventaba productos con el nombre del archivo.
+- **Archivos de código creados/modificados:** `ai_engine.py`, `views/p1_plan_y_compra.py`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md`.
+- **Próximo paso exacto:** Paso 2.3 (Configurar Google Gemini API Key `GEMINI_API_KEY` en `.streamlit/secrets.toml` y en Streamlit Cloud, e integrar visión multimodal de `gemini-2.5-flash` para fotos de tickets).
 
 ---
 
@@ -34,7 +34,7 @@ fecha_actualizacion: 2026-10-21
 
 ### Fase 2: Despensa Aproximada, Control de Fechas de Cocinado y Tickets
 - [x] **Paso 2.1:** Pantalla de Inventario (Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
-- [ ] **Paso 2.2:** Analizador sintáctico robusto de texto/CSV para tickets (limpieza inteligente de cabeceras corporativas, CIFs, direcciones, IVA y totales de pago, extracción limpia de alimentos y filtrado de productos de hogar/limpieza).
+- [x] **Paso 2.2:** Analizador sintáctico robusto de texto/CSV para tickets (limpieza inteligente de cabeceras corporativas, CIFs, direcciones, IVA y totales de pago, extracción limpia de alimentos y filtrado de productos de hogar/limpieza).
 - [ ] **Paso 2.3:** Configuración de Google Gemini API Key (`GEMINI_API_KEY`) en secrets (local y Streamlit Cloud) e integración del modelo `gemini-2.5-flash` para visión artificial multimodal de fotos y PDFs de tickets.
 - [ ] **Paso 2.4:** Validación y prueba interactiva del flujo de tickets: interfaz de edición y descarte de filas antes de guardar, cruce con `lista_compra`, guardado en `diccionario_tickets` y carga a `inventario`.
 

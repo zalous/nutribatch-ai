@@ -1,18 +1,25 @@
+import io
 import json
 import os
+import re
+import unicodedata
+
 import streamlit as st
 from pydantic import BaseModel, Field
 
 
+# =============================================================================
+# MODELOS ESTRUCTURADOS (para Gemini)
+# =============================================================================
 class ItemTicket(BaseModel):
     texto_ticket: str = Field(description="Nombre tal como aparece impreso en el ticket")
     nombre_limpio: str = Field(description="Nombre claro y legible del alimento o producto")
-    es_alimentacion: bool = Field(description="True si es comida/bebida, False si es producto de limpieza, basura o higiene")
-    supermercado: str = Field(default="General", description="Nombre del supermercado: Mercadona, Lidl, Consum, Dia...")
-    cantidad_aprox: str = Field(default="1 unidad", description="Ejemplo: '1 bandeja (600g)', '6 unidades', '1 botella'")
-    gramos_habituales: float | None = Field(default=None, description="Estimación del peso neto total en gramos si aplica")
-    es_indivisible: bool = Field(default=False, description="True si es una pieza entera de pescado o alimento no fraccionable")
-    ubicacion_defecto: str = Field(default="despensa", description="Ubicaciones: 'nevera', 'congelador', 'despensa', 'hogar_no_inventariar'")
+    es_alimentacion: bool = Field(description="True si es comida/bebida, False si es limpieza, hogar o higiene")
+    supermercado: str = Field(default="General", description="Mercadona, Lidl, Consum, Dia, Carrefour...")
+    cantidad_aprox: str = Field(default="1 unidad", description="Ej: '1 bandeja (600g)', '6 unidades'")
+    gramos_habituales: float | None = Field(default=None, description="Peso neto total estimado en gramos")
+    es_indivisible: bool = Field(default=False, description="True si es pieza entera no fraccionable (dorada, lubina, pollo entero)")
+    ubicacion_defecto: str = Field(default="despensa", description="'nevera', 'congelador', 'despensa' o 'hogar_no_inventariar'")
 
 
 class ResultadoTicket(BaseModel):
@@ -22,108 +29,435 @@ class ResultadoTicket(BaseModel):
 
 
 SYSTEM_PROMPT_TICKETS = """
-Eres un experto lector de tickets de supermercados españoles (Mercadona, Lidl, Consum, Dia, Carrefour...).
-Tu objetivo es analizar la imagen, PDF o texto del ticket e identificar todos los productos comprados.
+Eres un experto lector de tickets de supermercados españoles (Mercadona, Lidl, Consum, Dia, Carrefour, Alcampo...).
+Analiza la imagen, PDF o texto del ticket y extrae SOLO los productos realmente comprados.
 
-Instrucciones estrictas:
-1. **Diferenciar Comida vs Hogar:**
-   - Si el producto es de limpieza (detergente, lejía), papelería, bolsas de basura, servilletas, higiene -> `es_alimentacion = False` y `ubicacion_defecto = 'hogar_no_inventariar'`.
-   - Si es alimento o bebida -> `es_alimentacion = True`.
-2. **Asignar Ubicación Lógica:**
-   - Carne fresca, pescado fresco, lácteos, verduras frescas -> `ubicacion_defecto = 'nevera'`.
-   - Ultracongelados, helados, pescado/carne congelada -> `ubicacion_defecto = 'congelador'`.
-   - Conservas, legumbres secas, arroz, aceite, pasta, huevos, especias -> `ubicacion_defecto = 'despensa'`.
-3. **Pescados Enteros / Indivisibles:**
-   - Si se trata de piezas enteras de pescado (ej. Dorada, Lubina) o un pollo entero -> `es_indivisible = True`.
+Reglas estrictas:
+1. IGNORA por completo: nombre y dirección del supermercado, CIF/NIF, teléfono, número de ticket/factura,
+   cajero, fecha/hora, líneas de IVA, subtotales, TOTAL, forma de pago (tarjeta/efectivo), descuentos,
+   puntos de fidelidad, mensajes de gracias y cualquier dato fiscal o publicitario.
+2. NO inventes productos. Si una línea no es un artículo comprado, no la incluyas.
+3. Si una línea es un descuento o devolución (importe negativo), no la incluyas como producto.
+4. Clasifica cada producto:
+   - Limpieza, papelería, higiene, bolsas de basura, servilletas -> es_alimentacion=False y ubicacion_defecto='hogar_no_inventariar'.
+   - Carne/pescado fresco, lácteos, verduras frescas -> 'nevera'.
+   - Congelados y helados -> 'congelador'.
+   - Conservas, legumbres secas, arroz, pasta, aceite, huevos, especias, bebidas -> 'despensa'.
+5. Marca es_indivisible=True para piezas enteras (dorada, lubina, pollo entero).
+6. Usa el nombre limpio y legible (sin códigos ni abreviaturas raras) en nombre_limpio.
 """
 
 
-def procesar_ticket_con_ia(file_upload=None, texto_raw: str = None) -> list[dict]:
-    """
-    Procesa un ticket (Imagen, PDF o Texto) usando Gemini 2.5 Flash o un analizador de reglas estructurado.
-    Devuelve una lista de diccionarios con los productos clasificados.
-    """
-    gemini_key = st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
+# =============================================================================
+# NORMALIZACIÓN Y DICCIONARIOS
+# =============================================================================
+def _normalizar(texto: str) -> str:
+    """Minúsculas y sin acentos para comparar palabras clave."""
+    if not texto:
+        return ""
+    texto = unicodedata.normalize("NFKD", str(texto))
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return texto.lower().strip()
 
-    if gemini_key:
+
+PALABRAS_NO_PRODUCTO = [
+    "s.a.", "s.l.", "s.a", "s.l", "cif", "nif", "nie", "telf", "telefono", "fax",
+    "calle", "avda", "avenida", "plaza", "poligono", "carretera", "ctra", "paseo",
+    "factura", "ticket", "simplificada", "recibo", "justificante", "caja", "cajero",
+    "turno", "operador", "fecha", "hora", "cliente", "socio", "puntos", "fidelidad",
+    "total", "subtotal", "iva", "base imponible", "importe", "cambio", "efectivo",
+    "tarjeta", "visa", "mastercard", "descuento", "ahorro", "devolucion", "entrega",
+    "www.", "http", ".com", ".es", "gracias por su compra", "muchas gracias",
+    "articulo", "unidades", "precio", "importe total", "a pagar", "pendiente",
+]
+
+# Palabras que confirman que la línea es un producto de alimentación
+PALABRAS_ALIMENTO = [
+    "pollo", "pavo", "ternera", "cerdo", "cordero", "conejo", "jamon", "lomo",
+    "salmon", "dorada", "lubina", "merluza", "atun", "sardina", "bacalao", "gamba",
+    "leche", "yogur", "yogurt", "queso", "huevo", "huevos", "mantequilla", "nata",
+    "pan", "harina", "arroz", "pasta", "macarron", "espagueti", "lenteja", "garbanzo",
+    "guisante", "alubia", "aceite", "vinagre", "sal", "azucar", "miel", "cafe", "te",
+    "tomate", "cebolla", "ajo", "pimiento", "zanahoria", "calabacin", "berenjena",
+    "patata", "boniato", "brocoli", "coliflor", "espinaca", "lechuga", "pepino",
+    "manzana", "platano", "naranja", "limon", "kiwi", "fresa", "pera", "uva",
+    "aguacate", "fruto seco", "nuez", "almendra", "avena", "cereal", "legumbre",
+    "agua", "zumo", "vino", "cerveza", "refresco", "conserva", "tomate frito",
+    "aceituna", "especia", "pimienta", "oregano", "canela", "cacao", "chocolate",
+]
+
+# Productos de hogar / limpieza / higiene
+PALABRAS_HOGAR = [
+    "papel", "servilleta", "bolsa basura", "bolsas basura", "detergente", "suavizante",
+    "lejia", "fregona", "estropajo", "lavavajillas", "limpiador", "limpieza", "jabon",
+    "champu", "gel", "desodorante", "pasta de dientes", "cepillo", "compresa",
+    "panal", "toallita", "higienico", "film", "aluminio", "pilas", "bombilla",
+    "ambientador", "insecticida", "guantes", "basura", "friegasuelos", "quitamanchas",
+]
+
+PALABRAS_CONGELADOR = ["congelado", "congelada", "ultracongelado", "helado", "pizza"]
+PALABRAS_NEVERA = [
+    "pollo", "pavo", "ternera", "cerdo", "cordero", "conejo", "jamon", "lomo",
+    "salmon", "dorada", "lubina", "merluza", "atun", "sardina", "bacalao", "gamba",
+    "leche", "yogur", "yogurt", "queso", "huevo", "huevos", "mantequilla", "nata",
+    "tomate", "lechuga", "espinaca", "brocoli", "pepino", "zanahoria", "calabacin",
+    "manzana", "platano", "naranja", "kiwi", "fresa", "pera", "uva", "aguacate",
+]
+PALABRAS_INDIVISIBLES = ["dorada", "lubina", "pollo entero", "merluza entera", "besugo", "rodaballo"]
+
+# Precio al final de línea: 4,50 / 4.50 / 1.234,56 / 4,50 € / 4,50 EUR
+RE_PRECIO_FINAL = re.compile(r"\s+(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\s*(?:€|eur|e)?\s*$", re.IGNORECASE)
+RE_PRECIO_NEGATIVO = re.compile(r"-\s*\d+[.,]\d{2}\s*$")
+RE_CANTIDAD_INICIAL = re.compile(r"^\s*(\d{1,3})\s*(?:x|ud|uds|unid|unidades)?\s+", re.IGNORECASE)
+RE_PESO_INICIAL = re.compile(r"^\s*(\d+[.,]\d{2,3})\s*(kg|g|l|ml)\b", re.IGNORECASE)
+RE_PESO_X_PRECIO = re.compile(r"\b\d+[.,]\d{2,3}\s*(?:kg|g|l|ml)\s*x\s*\d+[.,]\d{2}\b", re.IGNORECASE)
+RE_CODIGO_IVA = re.compile(r"\s+[A-Z]\s*$")
+RE_SOLO_SIMBOLOS = re.compile(r"^[\W\d_]+$")
+RE_HORA = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
+RE_FECHA = re.compile(r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b")
+RE_DIRECCION = re.compile(
+    r"^(?:c/|c\.|cl\.|calle|avda|av\.|avenida|plaza|pza|poligono|pol\.|ctra|carretera|"
+    r"paseo|ronda|camino|urb\.|urbanizacion)(?:\s|$)",
+    re.IGNORECASE,
+)
+RE_CODPOSTAL = re.compile(r"^\d{5}\b")
+
+
+def _contiene_palabra(texto_norm: str, palabras: list[str]) -> bool:
+    """Busca palabras clave respetando límites de palabra y plurales simples."""
+    for palabra in palabras:
+        patron = r"\b" + re.escape(palabra) + r"(?:e?s)?\b"
+        if re.search(patron, texto_norm):
+            return True
+    return False
+
+
+def _es_linea_no_producto(linea: str) -> bool:
+    """Determina si una línea del ticket es metadato (cabecera, total, pago, etc.)."""
+    if not linea or len(linea.strip()) < 3:
+        return True
+    if RE_SOLO_SIMBOLOS.match(linea.strip()):
+        return True
+    if RE_HORA.search(linea) and len(linea) < 30:
+        return True
+    if RE_FECHA.search(linea) and len(linea) < 25:
+        return True
+
+    limpia = linea.strip()
+    if RE_DIRECCION.match(limpia) or RE_CODPOSTAL.match(limpia):
+        return True
+
+    norm = _normalizar(linea)
+    if RE_PRECIO_NEGATIVO.search(linea):
+        return True
+    for palabra in PALABRAS_NO_PRODUCTO:
+        if palabra in norm:
+            return True
+
+    letras = sum(1 for c in linea if c.isalpha())
+    if letras < 3:
+        return True
+    return False
+
+
+def _limpiar_nombre_producto(linea: str) -> tuple[str, str | None, float | None]:
+    """
+    Extrae (nombre_limpio, cantidad_aprox, gramos_estimados) de una línea de producto.
+    """
+    texto = linea.strip()
+
+    gramos = None
+    cantidad = "1 unidad"
+
+    match_peso = RE_PESO_INICIAL.match(texto)
+    if match_peso:
+        valor = match_peso.group(1).replace(",", ".")
+        unidad = match_peso.group(2).lower()
         try:
-            from google import genai
-            from google.genai import types
+            num = float(valor)
+            if unidad == "kg":
+                gramos = num * 1000
+            elif unidad == "g":
+                gramos = num
+            elif unidad in ("l", "ml"):
+                gramos = num * 1000 if unidad == "l" else num
+            cantidad = f"{match_peso.group(1)} {unidad}"
+        except ValueError:
+            pass
+        texto = texto[match_peso.end():].strip()
 
-            client = genai.Client(api_key=gemini_key)
+    match_cant = RE_CANTIDAD_INICIAL.match(texto)
+    if match_cant and not match_peso:
+        try:
+            n = int(match_cant.group(1))
+            if 0 < n <= 99:
+                cantidad = "1 unidad" if n == 1 else f"{n} unidades"
+                texto = texto[match_cant.end():].strip()
+        except ValueError:
+            pass
 
-            contents = [SYSTEM_PROMPT_TICKETS]
+    texto = RE_PESO_X_PRECIO.sub("", texto)
+    texto = RE_PRECIO_FINAL.sub("", texto)
+    texto = texto.strip(" .-*·|")
 
-            if file_upload is not None:
-                bytes_data = file_upload.getvalue()
-                mime_type = file_upload.type
-                if mime_type == "application/pdf":
-                    contents.append(
-                        types.Part.from_bytes(data=bytes_data, mime_type="application/pdf")
-                    )
-                else:
-                    contents.append(
-                        types.Part.from_bytes(data=bytes_data, mime_type=mime_type or "image/jpeg")
-                    )
-            elif texto_raw:
-                contents.append(f"Texto del ticket:\n{texto_raw}")
+    if len(texto) > 3:
+        texto = RE_CODIGO_IVA.sub("", texto).strip()
 
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=ResultadoTicket,
-                    temperature=0.1,
-                ),
-            )
+    nombre = " ".join(texto.split())
+    if nombre.isupper() or nombre.islower():
+        nombre = nombre.title()
 
-            res_json = json.loads(response.text)
-            return [item for item in res_json.get("items", [])]
-
-        except Exception as e:
-            st.warning(f"Aviso en la llamada a Gemini: {e}. Usando regla alternativa de procesamiento.")
-
-    # Regla fallback / demostrativa si no hay GEMINI_API_KEY configurada
-    return _procesar_ticket_fallback(texto_raw or (file_upload.name if file_upload else ""))
+    return nombre, cantidad, gramos
 
 
-def _procesar_ticket_fallback(origen_texto: str) -> list[dict]:
-    """Fallback inteligente para procesar entradas en texto plano o CSV simulados."""
-    lineas = [l.strip() for l in origen_texto.split("\n") if l.strip()]
-    items = []
+def _clasificar_producto(nombre: str) -> tuple[bool, str, bool]:
+    """Devuelve (es_alimentacion, ubicacion_defecto, es_indivisible)."""
+    norm = _normalizar(nombre)
 
-    palabras_hogar = ["papel", "bolsa", "detergente", "fregona", "servilleta", "champú", "jabón", "suavizante"]
-    palabras_nevera = ["pollo", "pavo", "ternera", "dorada", "salmón", "yogur", "leche", "queso", "jamón", "huevos", "tomate"]
-    palabras_congelador = ["congelado", "helado", "pizzas", "ultracongelado"]
+    es_hogar = _contiene_palabra(norm, PALABRAS_HOGAR)
+    es_alimento = _contiene_palabra(norm, PALABRAS_ALIMENTO)
+
+    es_indivisible = _contiene_palabra(norm, PALABRAS_INDIVISIBLES)
+
+    if es_hogar and not es_alimento:
+        return False, "hogar_no_inventariar", False
+    if es_hogar and es_alimento:
+        # Ante la duda, prioriza el filtro de hogar si no hay verbo claro de comida
+        return False, "hogar_no_inventariar", False
+    if not es_alimento and not es_hogar:
+        # Línea con letras y precio pero no reconocida: se asume alimento genérico
+        return True, "despensa", es_indivisible
+    if _contiene_palabra(norm, PALABRAS_CONGELADOR):
+        return True, "congelador", es_indivisible
+    if _contiene_palabra(norm, PALABRAS_NEVERA):
+        return True, "nevera", es_indivisible
+    return True, "despensa", es_indivisible
+
+
+def detectar_supermercado(texto: str) -> str:
+    norm = _normalizar(texto)
+    for nombre in ["mercadona", "lidl", "consum", "dia", "carrefour", "alcampo", "eroski", "aldi", "hipercor", "mas", "supersol"]:
+        if nombre in norm:
+            return nombre.title()
+    return "General"
+
+
+# =============================================================================
+# PARSER DE TEXTO / CSV
+# =============================================================================
+def parsear_texto_ticket(texto: str) -> list[dict]:
+    """Analiza el texto plano de un ticket y devuelve los productos limpios."""
+    if not texto or not texto.strip():
+        return []
+
+    supermercado = detectar_supermercado(texto)
+    items: list[dict] = []
+    lineas = texto.replace("\r", "\n").split("\n")
+
+    modo_csv = ";" in texto and any(
+        p in _normalizar(lineas[0]) for p in ["producto", "articulo", "descripcion", "nombre", "importe"]
+    )
 
     for linea in lineas:
-        if len(linea) < 2 or "total" in linea.lower() or "tarjeta" in linea.lower():
+        linea = linea.strip()
+        if not linea:
             continue
 
-        l_lower = linea.lower()
-        es_alim = not any(h in l_lower for h in palabras_hogar)
+        # Línea de peso que continúa al producto anterior: "0,650 kg x 5,20 3,38"
+        match_peso_linea = RE_PESO_INICIAL.match(linea)
+        if items and match_peso_linea and not any(c.isalpha() for c in linea[:2]):
+            try:
+                valor = float(match_peso_linea.group(1).replace(",", "."))
+                unidad = match_peso_linea.group(2).lower()
+                gramos_prev = valor * 1000 if unidad == "kg" else valor
+                items[-1]["gramos_habituales"] = gramos_prev
+                items[-1]["cantidad_aprox"] = f"{match_peso_linea.group(1)} {unidad}"
+                continue
+            except ValueError:
+                pass
 
-        if not es_alim:
-            ubicacion = "hogar_no_inventariar"
-        elif any(c in l_lower for c in palabras_congelador):
-            ubicacion = "congelador"
-        elif any(n in l_lower for n in palabras_nevera):
-            ubicacion = "nevera"
+        if modo_csv:
+            campos = [c.strip() for c in linea.split(";")]
+            if len(campos) < 2:
+                continue
+            nombre_campo = next((c for c in campos if sum(ch.isalpha() for ch in c) >= 3), "")
+            if not nombre_campo or _es_linea_no_producto(nombre_campo):
+                continue
+            if "producto" in _normalizar(nombre_campo) or "articulo" in _normalizar(nombre_campo):
+                continue
+            nombre, cantidad, gramos = _limpiar_nombre_producto(nombre_campo)
+            texto_orig = linea
         else:
-            ubicacion = "despensa"
+            if _es_linea_no_producto(linea):
+                continue
+            texto_orig = linea
+            nombre, cantidad, gramos = _limpiar_nombre_producto(linea)
 
-        es_indiv = "dorada" in l_lower or "lubina" in l_lower or "pollo entero" in l_lower
+        if len(nombre) < 3 or sum(ch.isalpha() for ch in nombre) < 3:
+            continue
+
+        es_alim, ubicacion, indivisible = _clasificar_producto(nombre)
 
         items.append({
-            "texto_ticket": linea,
-            "nombre_limpio": linea.title(),
+            "texto_ticket": texto_orig,
+            "nombre_limpio": nombre,
             "es_alimentacion": es_alim,
-            "supermercado": "Mercadona/Súper",
-            "cantidad_aprox": "1 unidad",
-            "gramos_habituales": 500.0 if es_alim else None,
-            "es_indivisible": es_indiv,
+            "supermercado": supermercado,
+            "cantidad_aprox": cantidad,
+            "gramos_habituales": gramos,
+            "es_indivisible": indivisible,
             "ubicacion_defecto": ubicacion,
         })
 
     return items
+
+
+def _extraer_texto_pdf(file_upload) -> str:
+    """Extrae el texto embebido de un PDF (tickets digitales)."""
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(io.BytesIO(file_upload.getvalue()))
+        partes = []
+        for pagina in reader.pages:
+            try:
+                partes.append(pagina.extract_text() or "")
+            except Exception:
+                continue
+        return "\n".join(partes)
+    except Exception:
+        return ""
+
+
+def tiene_gemini_key() -> bool:
+    try:
+        return bool(st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+    except Exception:
+        return bool(os.environ.get("GEMINI_API_KEY"))
+
+
+def _get_gemini_key() -> str | None:
+    try:
+        return st.secrets.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    except Exception:
+        return os.environ.get("GEMINI_API_KEY")
+
+
+def _procesar_con_gemini(payload_partes: list, texto_apoyo: str | None = None) -> list[dict] | None:
+    """Llama a Gemini 2.5 Flash (visión/texto) y devuelve los ítems o None si falla."""
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        return None
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=gemini_key)
+
+        contents = [SYSTEM_PROMPT_TICKETS]
+        contents.extend(payload_partes)
+        if texto_apoyo:
+            contents.append(f"Texto OCR/extraído de apoyo del mismo ticket:\n{texto_apoyo}")
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=ResultadoTicket,
+                temperature=0.0,
+            ),
+        )
+
+        data = json.loads(response.text)
+        items = data.get("items", [])
+        # Saneado: descarta ítems vacíos o sin nombre válido
+        limpios = []
+        for it in items:
+            nombre = str(it.get("nombre_limpio") or it.get("texto_ticket") or "").strip()
+            if len(nombre) < 3:
+                continue
+            it["nombre_limpio"] = nombre
+            ubicacion = it.get("ubicacion_defecto", "despensa")
+            if it.get("es_alimentacion") is False:
+                it["ubicacion_defecto"] = "hogar_no_inventariar"
+            elif ubicacion not in ("nevera", "congelador", "despensa"):
+                it["ubicacion_defecto"] = "despensa"
+            limpios.append(it)
+        return limpios
+    except Exception as e:
+        st.warning(f"No se pudo usar Gemini Vision ({e}). Se intentará el analizador de texto local.")
+        return None
+
+
+# =============================================================================
+# FUNCIÓN PRINCIPAL
+# =============================================================================
+def procesar_ticket_con_ia(file_upload=None, texto_raw: str = None) -> list[dict]:
+    """
+    Procesa un ticket (imagen, PDF o texto) y devuelve los productos clasificados.
+
+    - Imagen: requiere GEMINI_API_KEY (Gemini Vision). Sin clave avisa y devuelve [].
+    - PDF: usa Gemini si hay clave; si no, extrae el texto del PDF y lo parsea localmente.
+    - Texto/CSV pegado: parser local robusto; si no detecta nada y hay clave, reintenta con Gemini.
+    """
+    # ---- Texto pegado: parser local determinista (gratis y fiable) ----
+    if texto_raw and texto_raw.strip():
+        items = parsear_texto_ticket(texto_raw)
+        if items:
+            return items
+        if tiene_gemini_key():
+            gemini = _procesar_con_gemini([f"Texto del ticket:\n{texto_raw}"])
+            if gemini:
+                return gemini
+        st.warning(
+            "No se han detectado productos en el texto pegado. Revisa que el ticket incluya "
+            "líneas de producto con su precio o adjunta una foto/PDF."
+        )
+        return []
+
+    if file_upload is None:
+        return []
+
+    mime_type = getattr(file_upload, "type", "") or ""
+    es_pdf = mime_type == "application/pdf" or str(getattr(file_upload, "name", "")).lower().endswith(".pdf")
+
+    # ---- PDF ----
+    if es_pdf:
+        texto_pdf = _extraer_texto_pdf(file_upload)
+        if tiene_gemini_key():
+            from google.genai import types
+
+            partes = [types.Part.from_bytes(data=file_upload.getvalue(), mime_type="application/pdf")]
+            gemini = _procesar_con_gemini(partes, texto_apoyo=texto_pdf[:8000] if texto_pdf else None)
+            if gemini:
+                return gemini
+        if texto_pdf.strip():
+            items = parsear_texto_ticket(texto_pdf)
+            if items:
+                return items
+            st.warning("El PDF no contiene líneas de producto reconocibles. Prueba a subir una foto del ticket.")
+            return []
+        st.warning(
+            "Este PDF parece escaneado (solo imagen). Para leerlo hace falta configurar la "
+            "GEMINI_API_KEY del Paso 2.3."
+        )
+        return []
+
+    # ---- Imagen ----
+    if not tiene_gemini_key():
+        st.error(
+            "Para leer tickets en foto se necesita la API Key de Google Gemini (Paso 2.3). "
+            "Mientras tanto, pega el texto del ticket o sube el PDF digital de la app del súper."
+        )
+        return []
+
+    from google.genai import types
+
+    partes = [types.Part.from_bytes(data=file_upload.getvalue(), mime_type=mime_type or "image/jpeg")]
+    gemini = _procesar_con_gemini(partes)
+    if gemini:
+        return gemini
+
+    st.error("No se pudo interpretar la imagen del ticket. Prueba con mejor luz y enfoque, o pega el texto.")
+    return []

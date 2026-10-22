@@ -8,7 +8,7 @@ from database import (
     procesar_y_guardar_ticket_items,
     get_diccionario_tickets,
 )
-from ai_engine import procesar_ticket_con_ia
+from ai_engine import procesar_ticket_con_ia, tiene_gemini_key
 
 
 def render():
@@ -117,6 +117,13 @@ def render():
             "Sube una foto, PDF o pega el texto del ticket de Mercadona, Lidl, Consum o Dia. "
             "La IA separará la comida del hogar, guardará en despensa y tachará de la lista."
         )
+
+        if not tiene_gemini_key():
+            st.warning(
+                "📷 La lectura de **fotos** de tickets requiere la API Key de Google Gemini (Paso 2.3). "
+                "Mientras tanto, puedes **pegar el texto** del ticket o subir el **PDF digital** de la "
+                "app del supermercado: el analizador local ya filtra cabeceras, direcciones, IVA y totales."
+            )
 
         col_f, col_d = st.columns([2, 1])
         with col_f:
