@@ -2,10 +2,21 @@ import io
 import json
 import os
 import re
+import time
 import unicodedata
 
 import streamlit as st
 from pydantic import BaseModel, Field
+
+
+# Modelos vigentes de Google (se prueban en orden hasta que uno responda).
+# gemini-2.5-flash ya no está disponible para claves nuevas (octubre 2026).
+MODELOS_IA = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+]
 
 
 # =============================================================================
@@ -37,14 +48,16 @@ Reglas estrictas:
    cajero, fecha/hora, líneas de IVA, subtotales, TOTAL, forma de pago (tarjeta/efectivo), descuentos,
    puntos de fidelidad, mensajes de gracias y cualquier dato fiscal o publicitario.
 2. NO inventes productos. Si una línea no es un artículo comprado, no la incluyas.
-3. Si una línea es un descuento o devolución (importe negativo), no la incluyas como producto.
-4. Clasifica cada producto:
+3. Las líneas de peso/precio de continuación (ej. "0,650 kg x 5,20 3,38") pertenecen al producto
+   de la línea anterior: únelas a ese producto y NUNCA las devuelvas como un producto aparte.
+4. Si una línea es un descuento o devolución (importe negativo), no la incluyas como producto.
+5. Clasifica cada producto:
    - Limpieza, papelería, higiene, bolsas de basura, servilletas -> es_alimentacion=False y ubicacion_defecto='hogar_no_inventariar'.
    - Carne/pescado fresco, lácteos, verduras frescas -> 'nevera'.
    - Congelados y helados -> 'congelador'.
    - Conservas, legumbres secas, arroz, pasta, aceite, huevos, especias, bebidas -> 'despensa'.
-5. Marca es_indivisible=True para piezas enteras (dorada, lubina, pollo entero).
-6. Usa el nombre limpio y legible (sin códigos ni abreviaturas raras) en nombre_limpio.
+6. Marca es_indivisible=True para piezas enteras (dorada, lubina, pollo entero).
+7. Usa el nombre limpio y legible (sin códigos ni abreviaturas raras) en nombre_limpio.
 """
 
 
@@ -343,8 +356,27 @@ def _get_gemini_key() -> str | None:
         return os.environ.get("GEMINI_API_KEY")
 
 
+def _generar_con_fallback(client, contents, config):
+    """Prueba los modelos disponibles en orden, con un reintento ante 429/503."""
+    ultimo_error = None
+    for modelo in MODELOS_IA:
+        for intento in range(2):
+            try:
+                return client.models.generate_content(
+                    model=modelo, contents=contents, config=config
+                )
+            except Exception as e:
+                ultimo_error = e
+                mensaje = str(e)
+                if "429" in mensaje or "503" in mensaje or "UNAVAILABLE" in mensaje or "RESOURCE_EXHAUSTED" in mensaje:
+                    time.sleep(1.5 * (intento + 1))
+                    continue
+                break
+    raise ultimo_error if ultimo_error else RuntimeError("Gemini no respondió")
+
+
 def _procesar_con_gemini(payload_partes: list, texto_apoyo: str | None = None) -> list[dict] | None:
-    """Llama a Gemini 2.5 Flash (visión/texto) y devuelve los ítems o None si falla."""
+    """Llama a Gemini (visión/texto) y devuelve los ítems o None si falla."""
     gemini_key = _get_gemini_key()
     if not gemini_key:
         return None
@@ -359,15 +391,13 @@ def _procesar_con_gemini(payload_partes: list, texto_apoyo: str | None = None) -
         if texto_apoyo:
             contents.append(f"Texto OCR/extraído de apoyo del mismo ticket:\n{texto_apoyo}")
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=ResultadoTicket,
-                temperature=0.0,
-            ),
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=ResultadoTicket,
+            temperature=0.0,
         )
+
+        response = _generar_con_fallback(client, contents, config)
 
         data = json.loads(response.text)
         items = data.get("items", [])

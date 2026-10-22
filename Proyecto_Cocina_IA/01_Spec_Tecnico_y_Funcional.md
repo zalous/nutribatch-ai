@@ -1,7 +1,7 @@
 ---
 documento: Spec Técnico y Funcional
-version: 1.0
-stack: Python + Streamlit Cloud + Supabase + Gemini 2.5 Flash
+version: 1.1
+stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
 ---
 # Especificacion Tecnica y Funcional
 
@@ -10,7 +10,8 @@ stack: Python + Streamlit Cloud + Supabase + Gemini 2.5 Flash
 2. **Arquitectura 100% Online, Gratis y Sin Servidor Propio:**
    - **Frontend y Backend:** P[[00_MOC_Dashboard.md]]ython (`streamlit`) alojado gratis en Streamlit Community Cloud.
    - **Base de Datos:** `supabase` (PostgreSQL en la nube, capa gratuita).
-   - **Motor IA (Texto, Visión y Audio):** `google-genai` usando el modelo `gemini-2.5-flash` con respuestas estructuradas (`pydantic`).
+   - **Motor IA (Texto, Visión y Audio):** `google-genai` usando `gemini-3.6-flash` como modelo principal (con respaldo automático a `gemini-3.5-flash`, `gemini-3.7-flash` y `gemini-3.8-flash` ante saturación) y respuestas estructuradas (`pydantic`). Nota: `gemini-2.5-flash` ya no está disponible para claves nuevas desde octubre de 2026.
+   - **Credenciales:** la `GEMINI_API_KEY` se guarda en `.streamlit/secrets.toml` (local) y en los Secrets de Streamlit Community Cloud (producción), nunca en GitHub.
 3. **Cerebro IA Especializado (Inyección de Contexto Permanente):**
    - El módulo `ai_engine.py` debe cargar siempre como `system_instruction` las reglas médicas, de porciones y de alimentos de `02_Perfil_Clinico_y_Nutricional.md`.
    - Además, en cada consulta del usuario (por voz o botón), se le inyectará el contexto vivo de Supabase: qué hay en `inventario` (con sus fechas de cocinado), qué hay pendiente en `lista_compra` y cuándo se cocinaron los últimos platos en `registro_comidas`.

@@ -20,9 +20,10 @@ fecha_actualizacion: 2026-10-21
 
 ## ESTADO ACTUAL
 - **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets.
-- **Último avance:** Paso 2.2 completado. Parser sintáctico robusto de tickets en `ai_engine.py` (texto/CSV/PDF): descarta cabeceras, CIF, direcciones, códigos postales, fechas/horas, IVA, subtotales, totales, formas de pago y descuentos; separa hogar de comida; asigna nevera/congelador/despensa; detecta indivisibles y pesos. Eliminado el fallback que inventaba productos con el nombre del archivo.
-- **Archivos de código creados/modificados:** `ai_engine.py`, `views/p1_plan_y_compra.py`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md`.
-- **Próximo paso exacto:** Paso 2.3 (Configurar Google Gemini API Key `GEMINI_API_KEY` en `.streamlit/secrets.toml` y en Streamlit Cloud, e integrar visión multimodal de `gemini-2.5-flash` para fotos de tickets).
+- **Último avance:** Paso 2.3 validado en local. `GEMINI_API_KEY` configurada en `.streamlit/secrets.toml` y visión multimodal probada con una imagen de ticket (6 productos detectados, hogar filtrado, sin cabeceras/totales). Se descubrió que `gemini-2.5-flash` ya no está disponible para claves nuevas; el motor usa `gemini-3.6-flash` con respaldo a `gemini-3.5-flash`, `gemini-3.7-flash` y `gemini-3.8-flash`, con reintentos ante 429/503.
+- **Archivos de código creados/modificados:** `ai_engine.py`, `views/p1_plan_y_compra.py`, `AGENTS.md`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v1.1), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
+- **Pendiente del Paso 2.3:** pegar `GEMINI_API_KEY` en los Secrets de Streamlit Community Cloud y reiniciar la app para probar una foto real desde el móvil.
+- **Próximo paso exacto:** Paso 2.4 (interfaz de revisión editable del ticket: borrar/editar filas antes de guardar, cruce con `lista_compra`, alta en `diccionario_tickets` e `inventario`).
 
 ---
 
@@ -35,7 +36,7 @@ fecha_actualizacion: 2026-10-21
 ### Fase 2: Despensa Aproximada, Control de Fechas de Cocinado y Tickets
 - [x] **Paso 2.1:** Pantalla de Inventario (Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
 - [x] **Paso 2.2:** Analizador sintáctico robusto de texto/CSV para tickets (limpieza inteligente de cabeceras corporativas, CIFs, direcciones, IVA y totales de pago, extracción limpia de alimentos y filtrado de productos de hogar/limpieza).
-- [ ] **Paso 2.3:** Configuración de Google Gemini API Key (`GEMINI_API_KEY`) en secrets (local y Streamlit Cloud) e integración del modelo `gemini-2.5-flash` para visión artificial multimodal de fotos y PDFs de tickets.
+- [ ] **Paso 2.3:** Configuración de Google Gemini API Key (`GEMINI_API_KEY`) en secrets (local y Streamlit Cloud) e integración del modelo `gemini-3.6-flash` para visión artificial multimodal de fotos y PDFs de tickets. *(Clave validada en local; falta pegarla en Streamlit Cloud)*
 - [ ] **Paso 2.4:** Validación y prueba interactiva del flujo de tickets: interfaz de edición y descarte de filas antes de guardar, cruce con `lista_compra`, guardado en `diccionario_tickets` y carga a `inventario`.
 
 ### Fase 3: Motor IA Contextual, Recetas, Batch Cooking y Lista de la Compra (Segundo Cerebro)
