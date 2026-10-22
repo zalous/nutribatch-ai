@@ -1,6 +1,6 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-2-en-progreso
+estado: fase-2-completada
 fecha_actualizacion: 2026-10-21
 ---
 # Panel de Control y Contexto IA
@@ -19,10 +19,10 @@ fecha_actualizacion: 2026-10-21
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets.
-- **Último avance:** Paso 2.1 completado al 100%. Pantalla de inventario completa con las 4 ubicaciones (Nevera, Congelador, Despensa y Tápers Batch), semáforo visual de frescura de tápers según `fecha_cocinado` (🟢 0-2 días, 🟡 3-4 días, 🔴 5+ días), formulario de alta de alimentos y botón para gastar/eliminar consumos conectado con Supabase.
-- **Archivos de código creados/modificados:** `database.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
-- **Próximo paso exacto:** Paso 2.2 (Lector IA de Tickets: Foto/PDF/CSV de Mercadona, Lidl, Consum, Dia que cruza con `lista_compra`, filtra productos de hogar/limpieza, guarda pesos en `diccionario_tickets` y reparte frescos).
+- **Fase Actual:** Fase 3 - Motor IA Contextual, Recetas, Batch Cooking y Lista de la Compra (Segundo Cerebro).
+- **Último avance:** Fase 2 completada al 100%. Lector IA de tickets implementado en `ai_engine.py` y `views/p1_plan_y_compra.py` (soporte para foto, PDF y texto/CSV de Mercadona/Lidl/Consum/Dia, filtrado automático de productos de limpieza/hogar, carga inteligente a `inventario`, guardado en `diccionario_tickets` y tachado automático en `lista_compra`).
+- **Archivos de código creados/modificados:** `ai_engine.py`, `database.py`, `views/p1_plan_y_compra.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
+- **Próximo paso exacto:** Paso 3.1 (Crear `ai_engine.py` inyectando de forma permanente `02_Perfil_Clinico_y_Nutricional.md` + el estado actual del inventario, tápers con sus fechas de cocinado e historial para consultas y generación de menús clínicos).
 
 ---
 
@@ -34,7 +34,7 @@ fecha_actualizacion: 2026-10-21
 
 ### Fase 2: Despensa Aproximada, Control de Fechas de Cocinado y Tickets
 - [x] **Paso 2.1:** Pantalla de Inventario (Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
-- [ ] **Paso 2.2:** Lector IA de Tickets (Foto/PDF/CSV de Mercadona, Lidl, Consum, Dia) que cruza con la `lista_compra`, filtra productos de hogar/limpieza para no meterlos como comida, guarda pesos en `diccionario_tickets` y reparte frescos entre Nevera y Congelador.
+- [x] **Paso 2.2:** Lector IA de Tickets (Foto/PDF/CSV de Mercadona, Lidl, Consum, Dia) que cruza con la `lista_compra`, filtra productos de hogar/limpieza para no meterlos como comida, guarda pesos en `diccionario_tickets` y reparte frescos entre Nevera y Congelador.
 
 ### Fase 3: Motor IA Contextual, Recetas, Batch Cooking y Lista de la Compra (Segundo Cerebro)
 - [ ] **Paso 3.1:** Crear `ai_engine.py` inyectando de forma permanente `02_Perfil_Clinico_y_Nutricional.md` + el estado actual del inventario, tápers con sus fechas de cocinado e historial.
