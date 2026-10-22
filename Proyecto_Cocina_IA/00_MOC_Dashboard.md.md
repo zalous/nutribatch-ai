@@ -1,7 +1,7 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-2-en-progreso
-fecha_actualizacion: 2026-10-21
+estado: fase-2-pendiente-validacion
+fecha_actualizacion: 2026-10-22
 ---
 # Panel de Control y Contexto IA
 
@@ -20,10 +20,11 @@ fecha_actualizacion: 2026-10-21
 
 ## ESTADO ACTUAL
 - **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets.
-- **Último avance:** Paso 2.3 validado en local. `GEMINI_API_KEY` configurada en `.streamlit/secrets.toml` y visión multimodal probada con una imagen de ticket (6 productos detectados, hogar filtrado, sin cabeceras/totales). Se descubrió que `gemini-2.5-flash` ya no está disponible para claves nuevas; el motor usa `gemini-3.6-flash` con respaldo a `gemini-3.5-flash`, `gemini-3.7-flash` y `gemini-3.8-flash`, con reintentos ante 429/503.
-- **Archivos de código creados/modificados:** `ai_engine.py`, `views/p1_plan_y_compra.py`, `AGENTS.md`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v1.1), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
-- **Pendiente del Paso 2.3:** pegar `GEMINI_API_KEY` en los Secrets de Streamlit Community Cloud y reiniciar la app para probar una foto real desde el móvil.
-- **Próximo paso exacto:** Paso 2.4 (interfaz de revisión editable del ticket: borrar/editar filas antes de guardar, cruce con `lista_compra`, alta en `diccionario_tickets` e `inventario`).
+- **Último avance:** Pasos 2.2 y 2.3 completados. El lector de tickets ya funciona con texto, CSV, PDF digital y visión (fotos) mediante Gemini. `GEMINI_API_KEY` configurada en `.streamlit/secrets.toml` (local, validada con una imagen de prueba: 6 productos, hogar filtrado, sin cabeceras ni totales) y añadida por el usuario a los Secrets de Streamlit Community Cloud.
+- **Cambio técnico relevante:** `gemini-2.5-flash` fue retirado para claves nuevas (octubre 2026). El motor usa ahora `gemini-3.6-flash` como principal, con respaldo automático a `gemini-3.5-flash`, `gemini-3.7-flash` y `gemini-3.8-flash`, y reintentos ante errores 429/503. Documentado en `01_Spec_Tecnico_y_Funcional.md` v1.1 y en `AGENTS.md`.
+- **Archivos de código creados/modificados:** `ai_engine.py`, `views/p1_plan_y_compra.py`, `AGENTS.md`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-10-22_sesion.md`.
+- **Validación pendiente (la hace el usuario al inicio de la próxima sesión):** subir una **foto real de ticket** desde el móvil en `🛒 Compra > 🧾 Subir Ticket` con la app ya reiniciada en Streamlit Cloud, y confirmar que detecta bien los productos.
+- **Próximo paso exacto:** Confirmar el test real de la foto de ticket. Si funciona, ejecutar el **Paso 2.4** (interfaz de revisión editable: borrar/editar filas antes de guardar, cruce con `lista_compra`, alta en `diccionario_tickets` e `inventario`). Si falla, depurar el error concreto antes de continuar.
 
 ---
 
@@ -36,7 +37,7 @@ fecha_actualizacion: 2026-10-21
 ### Fase 2: Despensa Aproximada, Control de Fechas de Cocinado y Tickets
 - [x] **Paso 2.1:** Pantalla de Inventario (Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
 - [x] **Paso 2.2:** Analizador sintáctico robusto de texto/CSV para tickets (limpieza inteligente de cabeceras corporativas, CIFs, direcciones, IVA y totales de pago, extracción limpia de alimentos y filtrado de productos de hogar/limpieza).
-- [ ] **Paso 2.3:** Configuración de Google Gemini API Key (`GEMINI_API_KEY`) en secrets (local y Streamlit Cloud) e integración del modelo `gemini-3.6-flash` para visión artificial multimodal de fotos y PDFs de tickets. *(Clave validada en local; falta pegarla en Streamlit Cloud)*
+- [x] **Paso 2.3:** Configuración de Google Gemini API Key (`GEMINI_API_KEY`) en secrets (local y Streamlit Cloud) e integración del modelo `gemini-3.6-flash` para visión artificial multimodal de fotos y PDFs de tickets. *(Validado en local; el usuario ya añadió la clave a Streamlit Cloud y hará el test real de foto la próxima sesión)*
 - [ ] **Paso 2.4:** Validación y prueba interactiva del flujo de tickets: interfaz de edición y descarte de filas antes de guardar, cruce con `lista_compra`, guardado en `diccionario_tickets` y carga a `inventario`.
 
 ### Fase 3: Motor IA Contextual, Recetas, Batch Cooking y Lista de la Compra (Segundo Cerebro)
