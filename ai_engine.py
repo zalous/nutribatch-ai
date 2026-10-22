@@ -16,6 +16,8 @@ MODELOS_IA = [
     "gemini-3.5-flash",
     "gemini-3.7-flash",
     "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
 ]
 
 
@@ -356,23 +358,53 @@ def _get_gemini_key() -> str | None:
         return os.environ.get("GEMINI_API_KEY")
 
 
+def _modelos_agotados() -> set:
+    """Modelos con cuota diaria agotada en esta sesión (no se vuelven a intentar)."""
+    try:
+        return set(st.session_state.get("_gemini_agotados", set()))
+    except Exception:
+        return set()
+
+
+def _marcar_agotado(modelo: str) -> None:
+    try:
+        agotados = set(st.session_state.get("_gemini_agotados", set()))
+        agotados.add(modelo)
+        st.session_state["_gemini_agotados"] = agotados
+    except Exception:
+        pass
+
+
 def _generar_con_fallback(client, contents, config):
-    """Prueba los modelos disponibles en orden, con un reintento ante 429/503."""
-    ultimo_error = None
+    """Prueba los modelos en orden. La cuota diaria (429) no se reintenta: se salta al siguiente."""
+    agotados = _modelos_agotados()
+    errores = []
     for modelo in MODELOS_IA:
-        for intento in range(2):
-            try:
-                return client.models.generate_content(
-                    model=modelo, contents=contents, config=config
-                )
-            except Exception as e:
-                ultimo_error = e
-                mensaje = str(e)
-                if "429" in mensaje or "503" in mensaje or "UNAVAILABLE" in mensaje or "RESOURCE_EXHAUSTED" in mensaje:
-                    time.sleep(1.5 * (intento + 1))
+        if modelo in agotados:
+            errores.append(f"{modelo}: cuota diaria agotada")
+            continue
+        try:
+            return client.models.generate_content(
+                model=modelo, contents=contents, config=config
+            )
+        except Exception as e:
+            mensaje = str(e)
+            if "429" in mensaje or "RESOURCE_EXHAUSTED" in mensaje:
+                _marcar_agotado(modelo)
+                errores.append(f"{modelo}: cuota diaria agotada")
+                continue
+            if "503" in mensaje or "UNAVAILABLE" in mensaje:
+                time.sleep(1.5)
+                try:
+                    return client.models.generate_content(
+                        model=modelo, contents=contents, config=config
+                    )
+                except Exception as e2:
+                    errores.append(f"{modelo}: {str(e2)[:90]}")
                     continue
-                break
-    raise ultimo_error if ultimo_error else RuntimeError("Gemini no respondió")
+            errores.append(f"{modelo}: {mensaje[:90]}")
+            continue
+    raise RuntimeError("; ".join(errores) if errores else "Gemini no respondió")
 
 
 def _procesar_con_gemini(payload_partes: list, texto_apoyo: str | None = None) -> list[dict] | None:
@@ -416,7 +448,12 @@ def _procesar_con_gemini(payload_partes: list, texto_apoyo: str | None = None) -
             limpios.append(it)
         return limpios
     except Exception as e:
-        st.warning(f"No se pudo usar Gemini Vision ({e}). Se intentará el analizador de texto local.")
+        st.warning(
+            "No se pudo usar Gemini Vision (cuota diaria agotada o modelos saturados). "
+            "Se intentará el analizador de texto local."
+        )
+        with st.expander("Detalle técnico"):
+            st.code(str(e), language=None)
         return None
 
 
