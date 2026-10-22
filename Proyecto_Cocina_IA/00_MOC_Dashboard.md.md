@@ -1,6 +1,6 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-2-completada
+estado: fase-2-en-progreso
 fecha_actualizacion: 2026-10-21
 ---
 # Panel de Control y Contexto IA
@@ -19,10 +19,10 @@ fecha_actualizacion: 2026-10-21
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** Fase 3 - Motor IA Contextual, Recetas, Batch Cooking y Lista de la Compra (Segundo Cerebro).
-- **Último avance:** Fase 2 completada al 100%. Lector IA de tickets implementado en `ai_engine.py` y `views/p1_plan_y_compra.py` (soporte para foto, PDF y texto/CSV de Mercadona/Lidl/Consum/Dia, filtrado automático de productos de limpieza/hogar, carga inteligente a `inventario`, guardado en `diccionario_tickets` y tachado automático en `lista_compra`).
-- **Archivos de código creados/modificados:** `ai_engine.py`, `database.py`, `views/p1_plan_y_compra.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
-- **Próximo paso exacto:** Paso 3.1 (Crear `ai_engine.py` inyectando de forma permanente `02_Perfil_Clinico_y_Nutricional.md` + el estado actual del inventario, tápers con sus fechas de cocinado e historial para consultas y generación de menús clínicos).
+- **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets.
+- **Último avance:** Paso 2.1 completado al 100%. Desglose de Fase 2 ampliado con dos tareas necesarias: parser sintáctico de texto de tickets (anti-cabeceras/totales) y configuración formal de Google Gemini API Key.
+- **Archivos de código creados/modificados:** `ai_engine.py`, `database.py`, `views/p1_plan_y_compra.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md`.
+- **Próximo paso exacto:** Paso 2.2 (Analizador sintáctico robusto de texto/CSV para tickets: filtrado de cabeceras de supermercado, direcciones, CIFs, líneas de IVA y formas de pago, separación de productos de hogar y extracción limpia de alimentos).
 
 ---
 
@@ -34,7 +34,9 @@ fecha_actualizacion: 2026-10-21
 
 ### Fase 2: Despensa Aproximada, Control de Fechas de Cocinado y Tickets
 - [x] **Paso 2.1:** Pantalla de Inventario (Nevera, Congelador, Despensa Seca y Tápers Cocinados mostrando claramente qué día se cocinó cada plato y cuántos días lleva hecho).
-- [x] **Paso 2.2:** Lector IA de Tickets (Foto/PDF/CSV de Mercadona, Lidl, Consum, Dia) que cruza con la `lista_compra`, filtra productos de hogar/limpieza para no meterlos como comida, guarda pesos en `diccionario_tickets` y reparte frescos entre Nevera y Congelador.
+- [ ] **Paso 2.2:** Analizador sintáctico robusto de texto/CSV para tickets (limpieza inteligente de cabeceras corporativas, CIFs, direcciones, IVA y totales de pago, extracción limpia de alimentos y filtrado de productos de hogar/limpieza).
+- [ ] **Paso 2.3:** Configuración de Google Gemini API Key (`GEMINI_API_KEY`) en secrets (local y Streamlit Cloud) e integración del modelo `gemini-2.5-flash` para visión artificial multimodal de fotos y PDFs de tickets.
+- [ ] **Paso 2.4:** Validación y prueba interactiva del flujo de tickets: interfaz de edición y descarte de filas antes de guardar, cruce con `lista_compra`, guardado en `diccionario_tickets` y carga a `inventario`.
 
 ### Fase 3: Motor IA Contextual, Recetas, Batch Cooking y Lista de la Compra (Segundo Cerebro)
 - [ ] **Paso 3.1:** Crear `ai_engine.py` inyectando de forma permanente `02_Perfil_Clinico_y_Nutricional.md` + el estado actual del inventario, tápers con sus fechas de cocinado e historial.

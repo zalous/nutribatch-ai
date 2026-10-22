@@ -8,7 +8,7 @@ stack: Python + Streamlit Cloud + Supabase + Gemini 2.5 Flash
 ## 1. Reglas de Oro para la IA Desarrolladora y para la IA de la App
 1. **Cero código manual por parte del usuario:** El agente de código crea y edita todos los archivos completos. Prohibido truncar código.
 2. **Arquitectura 100% Online, Gratis y Sin Servidor Propio:**
-   - **Frontend y Backend:** Python (`streamlit`) alojado gratis en Streamlit Community Cloud.
+   - **Frontend y Backend:** P[[00_MOC_Dashboard.md]]ython (`streamlit`) alojado gratis en Streamlit Community Cloud.
    - **Base de Datos:** `supabase` (PostgreSQL en la nube, capa gratuita).
    - **Motor IA (Texto, Visión y Audio):** `google-genai` usando el modelo `gemini-2.5-flash` con respuestas estructuradas (`pydantic`).
 3. **Cerebro IA Especializado (Inyección de Contexto Permanente):**
@@ -26,6 +26,7 @@ stack: Python + Streamlit Cloud + Supabase + Gemini 2.5 Flash
 ## 2. Estructura de Archivos del Codigo
 En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 - `.streamlit/config.toml` (Diseño adaptado a pantallas de móvil)
+- `.streamlit/secrets.toml` (Credenciales seguras: `SUPABASE_URL`, `SUPABASE_KEY`, `GEMINI_API_KEY`)
 - `requirements.txt` (Librerías: `streamlit`, `supabase`, `google-genai`, `pydantic`, `pypdf`, `pillow`)
 - `app.py` (Menú principal móvil y navegación entre las 4 pantallas)
 - `database.py` (Conexión y consultas a Supabase)
