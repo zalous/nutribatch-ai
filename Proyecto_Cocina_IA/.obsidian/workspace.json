@@ -14,12 +14,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "00_MOC_Dashboard.md.md",
+                "file": "01_Spec_Tecnico_y_Funcional.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "00_MOC_Dashboard.md"
+              "title": "01_Spec_Tecnico_y_Funcional"
             }
           }
         ]
@@ -117,7 +117,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "00_MOC_Dashboard.md.md",
+                "file": "01_Spec_Tecnico_y_Funcional.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -136,7 +136,7 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "00_MOC_Dashboard.md.md",
+                "file": "01_Spec_Tecnico_y_Funcional.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
@@ -179,7 +179,7 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "00_MOC_Dashboard.md.md",
+                "file": "01_Spec_Tecnico_y_Funcional.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
@@ -192,8 +192,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300,
-    "collapsed": true
+    "width": 300
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -208,12 +207,13 @@
   },
   "active": "f51a25898d72c858",
   "lastOpenFiles": [
+    "00_MOC_Dashboard.md.md",
+    "01_Spec_Tecnico_y_Funcional.md",
+    "sesiones/2026-10-22_sesion.md",
+    "02_Perfil_Clinico_y_Nutricional.md",
     "sesiones/2026-10-21_sesion.md",
     "sesiones/2026-10-19_sesion.md",
     "sesiones",
-    "01_Spec_Tecnico_y_Funcional.md",
-    "02_Perfil_Clinico_y_Nutricional.md",
-    "00_MOC_Dashboard.md.md",
     "02_Requisitos_Nutricionales.md",
     "Bienvenido.md"
   ]

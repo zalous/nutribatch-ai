@@ -1,4 +1,7 @@
 import os
+import unicodedata
+from datetime import date
+
 import streamlit as st
 from supabase import create_client, Client
 
@@ -55,6 +58,32 @@ def delete_item_inventario(item_id: str):
     return response.data
 
 
+def delete_items_inventario(item_ids: list[str]) -> int:
+    """Elimina varios alimentos del inventario de una sola vez. Devuelve cuántos borró."""
+    ids = [str(i) for i in (item_ids or []) if i]
+    if not ids:
+        return 0
+    supabase = get_supabase_client()
+    response = supabase.table("inventario").delete().in_("id", ids).execute()
+    return len(response.data or [])
+
+
+def delete_all_inventario(ubicacion: str | None = None) -> int:
+    """
+    Vacía el inventario completo o solo una ubicación (nevera, congelador,
+    despensa, batch_cocinado). Devuelve cuántos productos se borraron.
+    """
+    supabase = get_supabase_client()
+    query = supabase.table("inventario").delete()
+    if ubicacion:
+        query = query.eq("ubicacion", ubicacion)
+    else:
+        # PostgREST exige un filtro explícito para permitir un DELETE masivo.
+        query = query.neq("id", "00000000-0000-0000-0000-000000000000")
+    response = query.execute()
+    return len(response.data or [])
+
+
 def update_item_inventario(item_id: str, update_data: dict):
     """Actualiza datos de un ítem del inventario."""
     supabase = get_supabase_client()
@@ -109,6 +138,32 @@ def delete_item_lista_compra(item_id: str):
     return response.data
 
 
+def delete_items_lista_compra(item_ids: list[str]) -> int:
+    """Elimina varios ítems de la lista de la compra. Devuelve cuántos borró."""
+    ids = [str(i) for i in (item_ids or []) if i]
+    if not ids:
+        return 0
+    supabase = get_supabase_client()
+    response = supabase.table("lista_compra").delete().in_("id", ids).execute()
+    return len(response.data or [])
+
+
+def delete_all_lista_compra(comprado: bool | None = None) -> int:
+    """
+    Vacía la lista de la compra completa o solo los pendientes/comprados.
+    Devuelve cuántos ítems se borraron.
+    """
+    supabase = get_supabase_client()
+    query = supabase.table("lista_compra").delete()
+    if comprado is None:
+        # PostgREST exige un filtro explícito para permitir un DELETE masivo.
+        query = query.neq("id", "00000000-0000-0000-0000-000000000000")
+    else:
+        query = query.eq("comprado", comprado)
+    response = query.execute()
+    return len(response.data or [])
+
+
 # -----------------------------------------------------------------------------
 # Funciones de Diccionario de Tickets
 # -----------------------------------------------------------------------------
@@ -133,9 +188,70 @@ def upsert_diccionario_ticket(ticket_data: dict):
 # -----------------------------------------------------------------------------
 # Procesamiento automático de Tickets
 # -----------------------------------------------------------------------------
+def _normalizar_texto(texto: str) -> str:
+    """Minúsculas, sin acentos y sin signos, para cruzar nombres de productos."""
+    if not texto:
+        return ""
+    sin_acentos = "".join(
+        c
+        for c in unicodedata.normalize("NFKD", str(texto))
+        if not unicodedata.combining(c)
+    )
+    limpio = "".join(
+        c if c.isalnum() or c.isspace() else " " for c in sin_acentos.lower()
+    )
+    return " ".join(limpio.split())
+
+
+def _a_bool(valor, defecto: bool = False) -> bool:
+    """Convierte valores de IA, pandas o texto a booleano de forma segura."""
+    if valor is None:
+        return defecto
+    try:
+        if isinstance(valor, float) and valor != valor:
+            return defecto
+    except Exception:
+        pass
+    if isinstance(valor, str):
+        return valor.strip().lower() in ("true", "1", "si", "sí", "yes")
+    return bool(valor)
+
+
+def _a_float(valor):
+    """Convierte a float tolerando None, NaN y textos tipo '600 g'."""
+    if valor is None:
+        return None
+    try:
+        if isinstance(valor, float) and valor != valor:
+            return None
+        return float(str(valor).replace(",", ".").replace("g", "").strip())
+    except Exception:
+        return None
+
+
+def _coincide_producto(nombre_a: str, nombre_b: str) -> bool:
+    """Cruce por palabras significativas: evita que 'sal' tache 'salmón'."""
+    a = _normalizar_texto(nombre_a)
+    b = _normalizar_texto(nombre_b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+
+    vacias = {
+        "de", "del", "la", "el", "los", "las", "y", "con", "al", "en",
+        "un", "una", "unos", "unas", "para", "por",
+    }
+    tokens_a = {t for t in a.split() if t not in vacias}
+    tokens_b = {t for t in b.split() if t not in vacias}
+    if not tokens_a or not tokens_b:
+        return False
+    return tokens_a.issubset(tokens_b) or tokens_b.issubset(tokens_a)
+
+
 def procesar_y_guardar_ticket_items(items_ticket: list) -> dict:
     """
-    Recibe una lista de dicts procesados por la IA:
+    Recibe la lista de dicts ya revisada y filtrada por el usuario en la interfaz:
     [
       {
         "texto_ticket": "CONTRAMUSLO POLLO BANDEJA",
@@ -153,65 +269,89 @@ def procesar_y_guardar_ticket_items(items_ticket: list) -> dict:
     2. Inserta en inventario si es_alimentacion == True (omite limpieza/hogar).
     3. Marca como comprados en lista_compra si hay coincidencias.
     """
-    supabase = get_supabase_client()
+    get_supabase_client()
     agregados_inventario = 0
     ignorados_hogar = 0
     tachados_lista = 0
+    guardados_diccionario = 0
+
+    fecha_compra = st.session_state.get("fecha_compra_ticket") or date.today().isoformat()
 
     # Cargar lista de la compra pendiente para cruzar
-    lista_pendiente = get_lista_compra(comprado=False)
+    lista_pendiente = list(get_lista_compra(comprado=False))
 
-    for item in items_ticket:
-        texto_orig = item.get("texto_ticket", "").strip()
-        nombre_l = item.get("nombre_limpio", texto_orig).strip()
-        es_alim = item.get("es_alimentacion", True)
-        ubicacion = item.get("ubicacion_defecto", "despensa")
+    for item in items_ticket or []:
+        texto_orig = str(
+            item.get("texto_ticket") or item.get("nombre_limpio") or ""
+        ).strip()
+        nombre_l = str(item.get("nombre_limpio") or texto_orig).strip()
+        if not nombre_l:
+            continue
+
+        es_alim = _a_bool(item.get("es_alimentacion"), True)
+        ubicacion = str(item.get("ubicacion_defecto") or "").strip().lower()
+        if not es_alim or ubicacion == "hogar_no_inventariar":
+            es_alim = False
+            ubicacion = "hogar_no_inventariar"
+        elif ubicacion not in ("nevera", "congelador", "despensa"):
+            ubicacion = "despensa"
+
+        gramos = _a_float(item.get("gramos_habituales"))
+        indivisible = _a_bool(item.get("es_indivisible"), False)
+        cantidad = str(item.get("cantidad_aprox") or "").strip() or "1 unidad"
+        supermercado = str(item.get("supermercado") or "").strip() or "General"
 
         # 1. Guardar en diccionario_tickets
         try:
-            upsert_diccionario_ticket({
-                "texto_ticket": texto_orig,
-                "nombre_limpio": nombre_l,
-                "es_alimentacion": es_alim,
-                "supermercado": item.get("supermercado", "General"),
-                "gramos_habituales": item.get("gramos_habituales"),
-                "es_indivisible": item.get("es_indivisible", False),
-                "ubicacion_defecto": ubicacion,
-            })
-        except Exception as e:
+            upsert_diccionario_ticket(
+                {
+                    "texto_ticket": texto_orig or nombre_l,
+                    "nombre_limpio": nombre_l,
+                    "es_alimentacion": es_alim,
+                    "supermercado": supermercado,
+                    "gramos_habituales": gramos,
+                    "es_indivisible": indivisible,
+                    "ubicacion_defecto": ubicacion,
+                }
+            )
+            guardados_diccionario += 1
+        except Exception:
             pass
 
         # 2. Si es alimentación, agregar a inventario
-        if es_alim and ubicacion != "hogar_no_inventariar":
+        if es_alim:
             try:
-                add_item_inventario({
-                    "nombre": nombre_l,
-                    "ubicacion": ubicacion if ubicacion in ["nevera", "congelador", "despensa"] else "despensa",
-                    "cantidad_aprox": item.get("cantidad_aprox", "1 unidad"),
-                    "gramos_estimados": item.get("gramos_habituales"),
-                    "es_indivisible": item.get("es_indivisible", False),
-                    "fecha_entrada": str(st.session_state.get("fecha_compra_ticket") or "2026-10-21"),
-                })
+                add_item_inventario(
+                    {
+                        "nombre": nombre_l,
+                        "ubicacion": ubicacion,
+                        "cantidad_aprox": cantidad,
+                        "gramos_estimados": gramos,
+                        "es_indivisible": indivisible,
+                        "fecha_entrada": fecha_compra,
+                    }
+                )
                 agregados_inventario += 1
-            except Exception as e:
+            except Exception:
                 pass
         else:
             ignorados_hogar += 1
 
-        # 3. Cruzar con lista_compra para tachar
-        for item_lc in lista_pendiente:
-            item_lc_nombre = item_lc["item"].lower()
-            if nombre_l.lower() in item_lc_nombre or item_lc_nombre in nombre_l.lower():
+        # 3. Cruzar con lista_compra para tachar (cada ítem solo se tacha una vez)
+        for item_lc in list(lista_pendiente):
+            if _coincide_producto(nombre_l, item_lc.get("item", "")):
                 try:
                     marcar_item_lista_compra(item_lc["id"], comprado=True)
                     tachados_lista += 1
-                except Exception as e:
+                    lista_pendiente.remove(item_lc)
+                except Exception:
                     pass
 
     return {
         "inventario": agregados_inventario,
         "hogar_omitido": ignorados_hogar,
         "lista_tachada": tachados_lista,
+        "diccionario": guardados_diccionario,
     }
 
 

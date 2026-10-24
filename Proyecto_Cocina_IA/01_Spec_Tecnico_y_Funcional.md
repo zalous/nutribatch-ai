@@ -1,6 +1,6 @@
 ---
 documento: Spec Técnico y Funcional
-version: 1.1
+version: 1.3
 stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
 ---
 # Especificacion Tecnica y Funcional
@@ -8,9 +8,10 @@ stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
 ## 1. Reglas de Oro para la IA Desarrolladora y para la IA de la App
 1. **Cero código manual por parte del usuario:** El agente de código crea y edita todos los archivos completos. Prohibido truncar código.
 2. **Arquitectura 100% Online, Gratis y Sin Servidor Propio:**
-   - **Frontend y Backend:** P[[00_MOC_Dashboard.md]]ython (`streamlit`) alojado gratis en Streamlit Community Cloud.
+   - **Frontend y Backend:** Python (`streamlit`) alojado gratis en Streamlit Community Cloud.
    - **Base de Datos:** `supabase` (PostgreSQL en la nube, capa gratuita).
-   - **Motor IA (Texto, Visión y Audio):** `google-genai` usando `gemini-3.6-flash` como modelo principal (con respaldo automático a `gemini-3.5-flash`, `gemini-3.7-flash` y `gemini-3.8-flash` ante saturación) y respuestas estructuradas (`pydantic`). Nota: `gemini-2.5-flash` ya no está disponible para claves nuevas desde octubre de 2026.
+   - **Motor IA (Texto, Visión y Audio):** `google-genai` usando `gemini-3.6-flash` como modelo principal, con respaldo automático a `gemini-3.5-flash`, `gemini-3.7-flash`, `gemini-3.8-flash` y, como última red, a los ligeros `gemini-3.5-flash-lite` y `gemini-3.1-flash-lite`. Respuestas estructuradas (`pydantic`). Nota: `gemini-2.5-flash` ya no está disponible para claves nuevas desde octubre de 2026.
+   - **Gestión de cuota y errores:** la cuota gratuita es de **20 peticiones/día por modelo y por proyecto**. Ante un 429 (`RESOURCE_EXHAUSTED`) no se reintenta: el modelo se marca como agotado en `st.session_state` y se salta al siguiente durante esa sesión. Solo se reintenta una vez ante 503/`UNAVAILABLE` (saturación puntual). Una clave nueva solo estrena cuota si pertenece a un **proyecto nuevo** de Google AI Studio.
    - **Credenciales:** la `GEMINI_API_KEY` se guarda en `.streamlit/secrets.toml` (local) y en los Secrets de Streamlit Community Cloud (producción), nunca en GitHub.
 3. **Cerebro IA Especializado (Inyección de Contexto Permanente):**
    - El módulo `ai_engine.py` debe cargar siempre como `system_instruction` las reglas médicas, de porciones y de alimentos de `02_Perfil_Clinico_y_Nutricional.md`.
@@ -103,12 +104,14 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 - **Planificador asistido por IA:** El usuario elige recetas aprobadas o le pide a la IA que diseñe el Batch Cooking y la semana cumpliendo las reglas clínicas.
 - **Lista de la Compra Unificada:** Muestra todo lo que hay que comprar en el súper dividido por pasillos (Frescos, Despensa, Hogar/Otros). Permite añadir cualquier cosa suelta a mano o con voz en cualquier momento de la semana.
 - **Subida de Ticket (PDF, Foto o CSV):** Tacha lo comprado de la lista, descarta productos de limpieza/hogar y mete la comida en Nevera, Congelador o Despensa.
+- **Revisión editable del ticket (Paso 2.4):** Antes de guardar nada, la vista previa se muestra como tabla editable (`st.data_editor`): se puede cambiar el nombre limpio, marcar/desmarcar si es comida, cambiar la ubicación de destino, ajustar la cantidad, marcar indivisible, desmarcar la casilla `Incluir` para descartar una fila o borrarla directamente. Botones rápidos para descartar todo lo de hogar o restaurar la vista original. Solo las filas incluidas se guardan en `diccionario_tickets` e `inventario`, y solo esas cruzan con `lista_compra`.
 
 ### Pantalla 2: Cocina Diaria, Control de Tápers, Foto en Encimera y Rescate
 - **Cocinar Batch o Receta:** Registra que hoy se ha cocinado un plato (`fecha_cocinado = hoy`), actualiza `ultima_vez_cocinada` en la receta y mete las raciones resultantes en `batch_cocinado` indicando visualmente cuántos días lleva hecho cada táper.
 - **Comer Ración:** Resta 1 comida de pareja del táper o de la despensa y suma las calorías y micronutrientes del día a Gonzalo y Marta.
 - **Foto en Encimera:** Haces foto a los ingredientes crudos sobre la encimera -> la IA los reconoce, pregunta si es para comer hoy o para guardar raciones de Batch, resta del inventario y registra la fecha de cocinado y los nutrientes.
 - **Modo Miércoles/Jueves (Recetas de Rescate):** La IA mira qué tápers llevan más días en la nevera, qué queda en el congelador y qué vitaminas/minerales faltan esa semana para proponer cómo cerrar la semana.
+- **Gestión masiva de la despensa (Paso 2.5):** Cada pestaña permite seleccionar varios productos con checkbox (incluido "seleccionar todos") y borrarlos de una sola vez. Además, un desplegable "Zona peligrosa" ofrece vaciar solo la pestaña actual o borrar todo el inventario; el borrado total exige escribir la palabra `BORRAR` como confirmación. La Lista de la Compra tiene el mismo borrado múltiple.
 
 ### Pantalla 3: Asistente por Voz y Consultor con Memoria
 - Micrófono directo (`st.audio_input`) y chat rápido donde la IA tiene todo el contexto clínico y de base de datos.

@@ -19,7 +19,7 @@ Al iniciar cualquier sesión de trabajo, el agente DEBE leer obligatoriamente la
 ---
 
 ## 3. Inyección del System Prompt Clínico
-- El módulo `ai_engine.py` (cuando se desarrolle en la Fase 3) debe leer de forma nativa y directa el archivo `Proyecto_Cocina_IA/02_Perfil_Clinico_y_Nutricional.md` para inyectarlo como `system_instruction` permanente en el modelo `gemini-3.6-flash` (principal, con respaldo automático a `gemini-3.5-flash`, `gemini-3.7-flash` y `gemini-3.8-flash`), junto con el estado del inventario y recetas.
+- El módulo `ai_engine.py` (cuando se desarrolle en la Fase 3) debe leer de forma nativa y directa el archivo `Proyecto_Cocina_IA/02_Perfil_Clinico_y_Nutricional.md` para inyectarlo como `system_instruction` permanente en el modelo `gemini-3.6-flash` (principal, con respaldo automático a `gemini-3.5-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.5-flash-lite` y `gemini-3.1-flash-lite`), junto con el estado del inventario y recetas.
 
 ---
 

@@ -4,6 +4,8 @@ from database import (
     get_inventario,
     add_item_inventario,
     delete_item_inventario,
+    delete_items_inventario,
+    delete_all_inventario,
 )
 
 
@@ -36,14 +38,39 @@ def calcular_antiguedad(fecha_cocinado_str: str) -> tuple[int, str, str]:
         return 0, "Fecha no válida", "⚪"
 
 
-def render_lista_items(items: list, es_batch: bool = False):
-    """Renderiza una lista de alimentos con su estado y botón de consumo/eliminado."""
+def _marcar_todos(ubicacion: str, items: list):
+    """Callback de 'Seleccionar todos': marca o desmarca cada checkbox de la pestaña."""
+    valor = bool(st.session_state.get(f"selall_{ubicacion}", False))
+    for item in items:
+        st.session_state[f"sel_{item['id']}"] = valor
+
+
+def render_lista_items(
+    items: list, ubicacion: str, etiqueta: str, es_batch: bool = False
+):
+    """Renderiza una lista de alimentos con selección múltiple, consumo y borrado."""
+    selall_key = f"selall_{ubicacion}"
     if not items:
+        st.session_state.pop(selall_key, None)
         st.info("No hay ítems registrados en esta sección.")
         return
 
+    st.checkbox(
+        f"Seleccionar todos ({len(items)})",
+        key=selall_key,
+        on_change=_marcar_todos,
+        args=(ubicacion, items),
+    )
+
     for item in items:
-        col_info, col_action = st.columns([3, 1])
+        col_sel, col_info, col_action = st.columns([1, 6, 2])
+
+        with col_sel:
+            st.checkbox(
+                "Seleccionar",
+                key=f"sel_{item['id']}",
+                label_visibility="collapsed",
+            )
 
         with col_info:
             nombre = item.get("nombre", "Alimento")
@@ -65,12 +92,53 @@ def render_lista_items(items: list, es_batch: bool = False):
                 )
 
         with col_action:
-            if st.button("🗑️ Gastar", key=f"del_{item['id']}"):
+            if st.button(
+                "🗑️ Gastar",
+                key=f"del_{item['id']}",
+                width="stretch",
+            ):
                 delete_item_inventario(item["id"])
                 st.toast(f"'{nombre}' consumido/eliminado de la despensa.")
                 st.rerun()
 
         st.divider()
+
+    seleccionados = [
+        item for item in items if st.session_state.get(f"sel_{item['id']}")
+    ]
+
+    col_info_sel, col_btn_sel = st.columns([3, 2])
+    with col_info_sel:
+        st.caption(f"{len(seleccionados)} de {len(items)} seleccionados")
+    with col_btn_sel:
+        if st.button(
+            f"🗑️ Borrar seleccionados ({len(seleccionados)})",
+            key=f"del_sel_{ubicacion}",
+            disabled=not seleccionados,
+            width="stretch",
+        ):
+            n_borrados = delete_items_inventario([it["id"] for it in seleccionados])
+            st.toast(f"{n_borrados} producto(s) borrados de {etiqueta}.")
+            st.rerun()
+
+    with st.expander(f"⚠️ Vaciar la pestaña {etiqueta}"):
+        st.caption(
+            f"Se borrarán los {len(items)} productos de {etiqueta}. "
+            "Esta acción no se puede deshacer."
+        )
+        confirmar_tab = st.checkbox(
+            "Confirmo que quiero vaciar esta pestaña",
+            key=f"conf_tab_{ubicacion}",
+        )
+        if st.button(
+            f"🗑️ Vaciar {etiqueta}",
+            key=f"wipe_{ubicacion}",
+            disabled=not confirmar_tab,
+            width="stretch",
+        ):
+            n_borrados = delete_all_inventario(ubicacion)
+            st.toast(f"{n_borrados} producto(s) borrados. Pestaña vaciada.")
+            st.rerun()
 
 
 def render():
@@ -109,19 +177,21 @@ def render():
     with subtabs[0]:
         st.subheader("🥘 Tápers y Raciones Cocinadas")
         st.caption("Control estricto de fechas de cocinado para máxima frescura.")
-        render_lista_items(items_batch, es_batch=True)
+        render_lista_items(
+            items_batch, "batch_cocinado", "Tápers Batch", es_batch=True
+        )
 
     with subtabs[1]:
         st.subheader("🧊 Nevera (Frescos)")
-        render_lista_items(items_nevera)
+        render_lista_items(items_nevera, "nevera", "Nevera")
 
     with subtabs[2]:
         st.subheader("❄️ Congelador")
-        render_lista_items(items_congelador)
+        render_lista_items(items_congelador, "congelador", "Congelador")
 
     with subtabs[3]:
         st.subheader("🥫 Despensa Seca")
-        render_lista_items(items_despensa)
+        render_lista_items(items_despensa, "despensa", "Despensa Seca")
 
     with subtabs[4]:
         st.subheader("➕ Añadir Alimento o Táper Manualmente")
@@ -182,3 +252,25 @@ def render():
                         st.rerun()
                     except Exception as err:
                         st.error(f"Error al guardar en Supabase: {err}")
+
+    st.divider()
+    with st.expander("☠️ Zona peligrosa: borrar TODO el inventario"):
+        st.error(
+            "Esto vacía Nevera, Congelador, Despensa Seca y Tápers Batch de una sola vez. "
+            "La acción no se puede deshacer."
+        )
+        confirmacion = st.text_input(
+            "Escribe BORRAR para confirmar",
+            key="confirm_borrar_todo_inventario",
+            placeholder="BORRAR",
+        )
+        if st.button(
+            "☠️ Borrar TODO el inventario",
+            key="wipe_all_inventario",
+            type="primary",
+            width="stretch",
+            disabled=confirmacion.strip().upper() != "BORRAR",
+        ):
+            n_borrados = delete_all_inventario()
+            st.toast(f"Inventario vaciado: {n_borrados} producto(s) borrados.")
+            st.rerun()
