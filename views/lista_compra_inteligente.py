@@ -1,4 +1,5 @@
 import json
+import re
 import unicodedata
 
 import pandas as pd
@@ -10,6 +11,7 @@ from database import (
     get_inventario,
     get_lista_compra,
     get_recetas,
+    update_item_lista_compra,
 )
 
 
@@ -20,12 +22,14 @@ ORIGEN_PLAN = "plan_recetas"
 ESTADO_INVENTARIO = "inventario"
 ESTADO_COMPRADO = "comprado"
 ESTADO_EN_LISTA = "en_lista"
+ESTADO_DESACTUALIZADO = "desactualizado"
 ESTADO_FALTANTE = "faltante"
 
 ETIQUETAS_ESTADO = {
     ESTADO_INVENTARIO: "✅ En despensa",
     ESTADO_COMPRADO: "🛍️ Ya comprado",
     ESTADO_EN_LISTA: "📝 Ya en la lista",
+    ESTADO_DESACTUALIZADO: "🔄 Actualizar cantidad",
     ESTADO_FALTANTE: "➕ Falta",
 }
 
@@ -36,6 +40,65 @@ TOKENS_DESPENSA = {
     "maiz", "miel", "nuez", "oregano", "pasta", "pimenton", "pimienta", "quinoa",
     "sal", "sardina", "semilla", "te", "tomate", "vinagre",
 }
+
+UNIDADES = {
+    "g": ("peso", 1.0, "g", "g"),
+    "kg": ("peso", 1000.0, "g", "g"),
+    "ml": ("volumen", 1.0, "ml", "ml"),
+    "l": ("volumen", 1000.0, "ml", "ml"),
+    "ud": ("ud", 1.0, "unidad", "unidades"),
+    "cda": ("cda", 1.0, "cucharada", "cucharadas"),
+    "cdta": ("cdta", 1.0, "cucharadita", "cucharaditas"),
+    "lata": ("lata", 1.0, "lata", "latas"),
+    "bote": ("bote", 1.0, "bote", "botes"),
+    "paquete": ("paquete", 1.0, "paquete", "paquetes"),
+    "bandeja": ("bandeja", 1.0, "bandeja", "bandejas"),
+    "filete": ("filete", 1.0, "filete", "filetes"),
+    "pieza": ("pieza", 1.0, "pieza", "piezas"),
+    "loncha": ("loncha", 1.0, "loncha", "lonchas"),
+    "diente": ("diente", 1.0, "diente", "dientes"),
+    "rama": ("rama", 1.0, "rama", "ramas"),
+    "hoja": ("hoja", 1.0, "hoja", "hojas"),
+    "taza": ("taza", 1.0, "taza", "tazas"),
+    "sobre": ("sobre", 1.0, "sobre", "sobres"),
+    "rebanada": ("rebanada", 1.0, "rebanada", "rebanadas"),
+    "punado": ("punado", 1.0, "puñado", "puñados"),
+    "pizca": ("pizca", 1.0, "pizca", "pizcas"),
+}
+
+ALIAS_UNIDADES = {
+    "g": "g", "gr": "g", "grs": "g", "gramo": "g", "gramos": "g",
+    "kg": "kg", "kilo": "kg", "kilos": "kg", "kilogramo": "kg",
+    "kilogramos": "kg",
+    "ml": "ml", "cc": "ml", "mililitro": "ml", "mililitros": "ml",
+    "l": "l", "litro": "l", "litros": "l",
+    "u": "ud", "ud": "ud", "uds": "ud", "unidad": "ud", "unidades": "ud",
+    "cda": "cda", "cdas": "cda", "cucharada": "cda", "cucharadas": "cda",
+    "cdta": "cdta", "cdtas": "cdta", "cucharadita": "cdta",
+    "cucharaditas": "cdta",
+    "lata": "lata", "latas": "lata",
+    "bote": "bote", "botes": "bote",
+    "paquete": "paquete", "paquetes": "paquete", "pack": "paquete",
+    "packs": "paquete",
+    "bandeja": "bandeja", "bandejas": "bandeja",
+    "filete": "filete", "filetes": "filete",
+    "pieza": "pieza", "piezas": "pieza",
+    "loncha": "loncha", "lonchas": "loncha",
+    "diente": "diente", "dientes": "diente",
+    "rama": "rama", "ramas": "rama",
+    "hoja": "hoja", "hojas": "hoja",
+    "taza": "taza", "tazas": "taza",
+    "sobre": "sobre", "sobres": "sobre",
+    "rebanada": "rebanada", "rebanadas": "rebanada",
+    "puno": "punado", "punos": "punado", "punado": "punado",
+    "punados": "punado",
+    "pizca": "pizca", "pizcas": "pizca",
+}
+
+PATRON_CANTIDAD = re.compile(
+    r"(\d+\s*/\s*\d+|\d+(?:[.,]\d+)?)\s*([a-zA-Záéíóúüñ.]*)",
+    re.IGNORECASE,
+)
 
 
 def _flash(tipo: str, mensaje: str) -> None:
@@ -127,6 +190,83 @@ def _separar_ingrediente(ingrediente) -> tuple[str, str]:
     return texto, ""
 
 
+def _a_numero(texto: str) -> float:
+    texto = str(texto or "").strip().replace(" ", "")
+    if not texto:
+        raise ValueError("sin número")
+    if "/" in texto:
+        numerador, denominador = texto.split("/", 1)
+        return float(numerador) / float(denominador)
+    if "," in texto and "." in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    elif "," in texto:
+        texto = texto.replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}\.\d{3}", texto) and not texto.startswith("0."):
+        texto = texto.replace(".", "")
+    return float(texto)
+
+
+def _parsear_cantidad(cantidad) -> tuple[float, str] | None:
+    if cantidad is None:
+        return None
+    limpio = re.sub(r"\([^)]*\)", " ", str(cantidad)).strip()
+    if not limpio:
+        return None
+    coincidencia = PATRON_CANTIDAD.search(limpio)
+    if not coincidencia:
+        return None
+    try:
+        numero = _a_numero(coincidencia.group(1))
+    except (TypeError, ValueError, ZeroDivisionError):
+        return None
+    unidad = _normalizar(coincidencia.group(2) or "")
+    return numero, ALIAS_UNIDADES.get(unidad, unidad)
+
+
+def _formatear_numero(valor: float) -> str:
+    if abs(valor - round(valor)) < 0.005:
+        return f"{int(round(valor)):,}".replace(",", ".")
+    texto = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return texto.rstrip("0").rstrip(",")
+
+
+def _sumar_cantidades(cantidades: list[str]) -> str:
+    totales = {}
+    sueltas = []
+    for cantidad in cantidades or []:
+        parseada = _parsear_cantidad(cantidad)
+        if parseada is None:
+            texto = str(cantidad or "").strip()
+            if texto and texto not in sueltas:
+                sueltas.append(texto)
+            continue
+
+        numero, unidad = parseada
+        if unidad in UNIDADES:
+            grupo, factor, singular, plural = UNIDADES[unidad]
+            clave = grupo
+            if clave not in totales:
+                totales[clave] = [0.0, singular, plural]
+            totales[clave][0] += numero * factor
+        elif unidad:
+            clave = f"unidad:{unidad}"
+            if clave not in totales:
+                totales[clave] = [0.0, unidad, unidad]
+            totales[clave][0] += numero
+        else:
+            clave = "sin_unidad"
+            if clave not in totales:
+                totales[clave] = [0.0, "", ""]
+            totales[clave][0] += numero
+
+    partes = []
+    for total, singular, plural in totales.values():
+        etiqueta = singular if abs(total - 1.0) < 0.005 else plural
+        partes.append(f"{_formatear_numero(total)} {etiqueta}".strip())
+    partes.extend(sueltas)
+    return " + ".join(partes)
+
+
 def agrupar_ingredientes(recetas: list[dict]) -> list[dict]:
     """Une los ingredientes repetidos de varias recetas conservando el orden."""
     grupos = {}
@@ -148,7 +288,7 @@ def agrupar_ingredientes(recetas: list[dict]) -> list[dict]:
                     "recetas": [],
                 }
                 grupos[clave] = grupo
-            if cantidad and cantidad not in grupo["cantidades"]:
+            if cantidad:
                 grupo["cantidades"].append(cantidad)
             if titulo not in grupo["recetas"]:
                 grupo["recetas"].append(titulo)
@@ -164,11 +304,15 @@ def _en_inventario(nombre: str, inventario: list[dict]) -> bool:
     return False
 
 
-def _en_lista(nombre: str, items: list[dict]) -> bool:
+def _buscar_en_lista(nombre: str, items: list[dict]):
     for item in items or []:
         if _coincide(nombre, item.get("item", "")):
-            return True
-    return False
+            return item
+    return None
+
+
+def _en_lista(nombre: str, items: list[dict]) -> bool:
+    return _buscar_en_lista(nombre, items) is not None
 
 
 def construir_estado_plan(
@@ -181,18 +325,27 @@ def construir_estado_plan(
     filas = []
     for grupo in agrupar_ingredientes(recetas):
         nombre = grupo["nombre"]
+        cantidad = _sumar_cantidades(grupo["cantidades"])
         if _en_inventario(nombre, inventario):
             estado = ESTADO_INVENTARIO
         elif _en_lista(nombre, comprados):
             estado = ESTADO_COMPRADO
-        elif _en_lista(nombre, pendientes):
-            estado = ESTADO_EN_LISTA
         else:
-            estado = ESTADO_FALTANTE
+            existente = _buscar_en_lista(nombre, pendientes)
+            if existente is None:
+                estado = ESTADO_FALTANTE
+            elif (
+                str(existente.get("origen") or "") == ORIGEN_PLAN
+                and str(existente.get("item") or "").strip()
+                != _texto_item(nombre, cantidad)
+            ):
+                estado = ESTADO_DESACTUALIZADO
+            else:
+                estado = ESTADO_EN_LISTA
         filas.append(
             {
                 "nombre": nombre,
-                "cantidad": " + ".join(grupo["cantidades"]),
+                "cantidad": cantidad,
                 "recetas": ", ".join(grupo["recetas"]),
                 "estado": estado,
             }
@@ -213,32 +366,52 @@ def _texto_item(nombre: str, cantidad: str) -> str:
     return f"{nombre} ({cantidad})" if cantidad else nombre
 
 
-def anadir_faltantes(faltantes: list[dict]) -> tuple[int, int]:
-    """Inserta los faltantes evitando duplicados ya presentes en la lista."""
-    existentes = list(get_lista_compra(comprado=False))
-    existentes.extend(get_lista_compra(comprado=True))
+def anadir_faltantes(faltantes: list[dict]) -> tuple[int, int, int]:
+    """Añade faltantes y corrige la cantidad de los que ya generó el plan."""
+    pendientes = list(get_lista_compra(comprado=False))
+    comprados = list(get_lista_compra(comprado=True))
 
     nuevos = []
+    actualizados = 0
+    omitidos = 0
     for fila in faltantes or []:
         nombre = str(fila.get("nombre") or "").strip()
         if not nombre:
             continue
-        if _en_lista(nombre, existentes):
-            continue
-        nuevos.append(
-            {
-                "item": _texto_item(nombre, str(fila.get("cantidad") or "").strip()),
-                "categoria": _categoria_para(nombre),
-                "origen": ORIGEN_PLAN,
-                "comprado": False,
-            }
+        texto = _texto_item(nombre, str(fila.get("cantidad") or "").strip())
+        existente = next(
+            (item for item in pendientes if _coincide(nombre, item.get("item", ""))),
+            None,
         )
+        if existente:
+            if (
+                str(existente.get("origen") or "") == ORIGEN_PLAN
+                and str(existente.get("item") or "").strip() != texto
+            ):
+                update_item_lista_compra(
+                    existente["id"],
+                    {"item": texto, "categoria": _categoria_para(nombre)},
+                )
+                existente["item"] = texto
+                actualizados += 1
+            else:
+                omitidos += 1
+            continue
+        if _en_lista(nombre, comprados):
+            omitidos += 1
+            continue
+        nuevo = {
+            "item": texto,
+            "categoria": _categoria_para(nombre),
+            "origen": ORIGEN_PLAN,
+            "comprado": False,
+        }
+        nuevos.append(nuevo)
+        pendientes.append(nuevo)
 
-    if not nuevos:
-        return 0, len(faltantes or [])
-
-    add_items_lista_compra(nuevos)
-    return len(nuevos), len(faltantes or []) - len(nuevos)
+    if nuevos:
+        add_items_lista_compra(nuevos)
+    return len(nuevos), actualizados, omitidos
 
 
 def _plan_desde_url(ids_validos: list[str]) -> list[str]:
@@ -390,34 +563,57 @@ def render() -> None:
 
     st.dataframe(_tabla_plan(filas), hide_index=True, width="stretch")
     st.caption(
-        "Las cantidades son orientativas y se suman cuando el mismo ingrediente aparece "
-        "en varias recetas. Un ingrediente cuenta como cubierto si ya está en nevera, "
-        "congelador o despensa (los tápers ya cocinados no cuentan como ingrediente crudo)."
+        "Las cantidades se suman automáticamente cuando el mismo ingrediente aparece "
+        "en varias recetas (por ejemplo, 500 g + 500 g = 1.000 g). Un ingrediente cuenta "
+        "como cubierto si ya está en nevera, congelador o despensa (los tápers ya cocinados "
+        "no cuentan como ingrediente crudo)."
     )
 
     faltantes = [fila for fila in filas if fila["estado"] == ESTADO_FALTANTE]
-    if not faltantes:
+    desactualizados = [
+        fila for fila in filas if fila["estado"] == ESTADO_DESACTUALIZADO
+    ]
+    if desactualizados:
+        st.caption(
+            f"🔄 {len(desactualizados)} cantidad(es) de la lista no coinciden con las "
+            "recetas y se corregirán al sincronizar."
+        )
+
+    por_resolver = faltantes + desactualizados
+    if not por_resolver:
         st.success("¡No falta ningún ingrediente para estas recetas!")
         return
 
-    if st.button(
-        f"➕ Añadir {len(faltantes)} ingrediente(s) a la Lista de la Compra",
-        type="primary",
-        width="stretch",
-    ):
-        with st.spinner("Añadiendo los ingredientes que faltan..."):
+    if faltantes and desactualizados:
+        etiqueta_boton = (
+            f"🔄 Sincronizar {len(faltantes)} faltante(s) y "
+            f"actualizar {len(desactualizados)} cantidad(es)"
+        )
+    elif faltantes:
+        etiqueta_boton = (
+            f"➕ Añadir {len(faltantes)} ingrediente(s) a la Lista de la Compra"
+        )
+    else:
+        etiqueta_boton = (
+            f"🔄 Actualizar {len(desactualizados)} cantidad(es) de la lista"
+        )
+
+    if st.button(etiqueta_boton, type="primary", width="stretch"):
+        with st.spinner("Sincronizando la lista de la compra..."):
             try:
-                anadidos, omitidos = anadir_faltantes(faltantes)
+                anadidos, actualizados, omitidos = anadir_faltantes(por_resolver)
             except Exception as exc:
                 st.error(f"No se pudo actualizar la lista de la compra: {exc}")
             else:
+                partes = []
                 if anadidos:
-                    mensaje = (
-                        f"{anadidos} ingrediente(s) añadidos a la Lista de la Compra."
-                    )
-                    if omitidos:
-                        mensaje += f" {omitidos} ya estaban apuntados."
-                    _flash("success", mensaje)
+                    partes.append(f"{anadidos} ingrediente(s) añadidos")
+                if actualizados:
+                    partes.append(f"{actualizados} cantidad(es) actualizada(s)")
+                if omitidos:
+                    partes.append(f"{omitidos} ya estaban apuntados")
+                if anadidos or actualizados:
+                    _flash("success", "Lista actualizada: " + ", ".join(partes) + ".")
                 else:
                     _flash("info", "Todos los ingredientes ya estaban en la lista.")
                 st.rerun()

@@ -145,6 +145,18 @@ def marcar_item_lista_compra(item_id: str, comprado: bool = True):
     return response.data
 
 
+def update_item_lista_compra(item_id: str, update_data: dict):
+    """Actualiza datos de un ítem de la lista de la compra."""
+    supabase = get_supabase_client()
+    response = (
+        supabase.table("lista_compra")
+        .update(update_data)
+        .eq("id", item_id)
+        .execute()
+    )
+    return response.data
+
+
 def delete_item_lista_compra(item_id: str):
     """Elimina un ítem de la lista de la compra."""
     supabase = get_supabase_client()
