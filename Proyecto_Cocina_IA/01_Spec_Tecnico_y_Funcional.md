@@ -36,7 +36,7 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 - `ai_engine.py` (Cerebro IA con System Prompt clínico/batch, lector de tickets, fotos, voz y planificador)
 - **Subcarpeta `views/`:**
   - `p1_plan_y_compra.py` (Planificador con IA, Lista de la Compra Unificada Comida+Hogar y Subida de Ticket. Integra el gestor de recetas y el segundo cerebro de compras)
-  - `lista_compra_inteligente.py` (Segundo cerebro de la compra: selector de recetas de la semana, cruce de ingredientes con inventario y lista, y alta automática de faltantes)
+  - `lista_compra_inteligente.py` (Segundo cerebro de la compra: selector de recetas de la semana, cruce de ingredientes con inventario y lista, suma de cantidades y sincronización automática de faltantes)
   - `recetas_batch.py` (Catálogo de recetas aprobadas, alta/edición/borrado y cálculo del reparto batch 55% Gonzalo / 45% Marta)
   - `p2_cocinar_hoy.py` (Nevera/Congelador con fechas de cocinado, Check de cocinado/comido, Foto en encimera y Recetas de rescate Mié/Jue)
   - `p3_asistente_voz.py` (Consultor por Voz y Texto: pedir ideas de batch/cenas/desayunos, añadir a la lista de la compra o preguntar qué día se cocinó un plato. En la Fase 3 ya ofrece una consulta de texto de solo lectura)
