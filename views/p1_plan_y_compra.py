@@ -196,7 +196,7 @@ def _marcar_todos_compra(clave: str, items: list):
 
 
 def _render_items_compra(items: list, clave: str, comprado: bool, vacio_texto: str):
-    """Lista los ítems de la compra con selección múltiple y borrado masivo."""
+    """Lista limpia de ítems: tocar uno pendiente lo marca y tocar uno comprado lo quita."""
     if not items:
         st.session_state.pop(f"selall_{clave}", None)
         st.caption(vacio_texto)
@@ -210,36 +210,33 @@ def _render_items_compra(items: list, clave: str, comprado: bool, vacio_texto: s
     )
 
     for item in items:
-        c_sel, c_check, c_del = st.columns([1, 6, 1])
+        c_sel, c_item = st.columns([1, 7])
         with c_sel:
             st.checkbox(
                 "Seleccionar",
                 key=f"sel_lc_{item['id']}",
                 label_visibility="collapsed",
             )
-        with c_check:
+        with c_item:
             if comprado:
                 if st.button(
-                    f"✔️ ~~{item['item']}~~",
-                    key=f"uncheck_{item['id']}",
-                    help="Haz clic para devolver a pendientes",
+                    f"~~{item['item']}~~",
+                    key=f"quitar_{item['id']}",
+                    help="Haz clic para quitarlo de la lista",
                     width="stretch",
                 ):
-                    marcar_item_lista_compra(item["id"], comprado=False)
+                    delete_item_lista_compra(item["id"])
+                    st.toast(f"'{item['item']}' quitado de la lista.")
                     st.rerun()
             else:
                 if st.button(
-                    f"⚪ {item['item']} ({item['categoria']})",
-                    key=f"check_{item['id']}",
-                    help="Haz clic para marcar como comprado",
+                    item["item"],
+                    key=f"comprar_{item['id']}",
+                    help="Haz clic para marcarlo como comprado",
                     width="stretch",
                 ):
                     marcar_item_lista_compra(item["id"], comprado=True)
                     st.rerun()
-        with c_del:
-            if st.button("❌", key=f"del_lc_{item['id']}", help="Eliminar este ítem"):
-                delete_item_lista_compra(item["id"])
-                st.rerun()
 
     seleccionados = [
         it for it in items if st.session_state.get(f"sel_lc_{it['id']}")
@@ -269,39 +266,31 @@ def render():
     with tab_lista:
         st.subheader("Añadir a la lista")
         with st.form("form_nuevo_item", clear_on_submit=True):
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                item_nombre = st.text_input(
-                    "Producto o ingrediente",
-                    placeholder="Ej. Yogur griego ligero, bolsas de basura...",
-                )
-            with col2:
-                categoria = st.selectbox(
-                    "Categoría",
-                    ["frescos", "despensa", "congelados", "hogar_y_otros"],
-                    format_func=lambda x: {
-                        "frescos": "🥦 Frescos / Nevera",
-                        "despensa": "🥫 Despensa Seca",
-                        "congelados": "❄️ Congelados",
-                        "hogar_y_otros": "🧼 Hogar y Limpieza",
-                    }[x],
-                )
+            item_nombre = st.text_input(
+                "Producto o ingrediente",
+                placeholder="Ej. Yogur griego ligero, bolsas de basura...",
+            )
             submitted = st.form_submit_button("➕ Añadir a la lista")
-            if submitted and item_nombre.strip():
-                add_item_lista_compra(
-                    {
-                        "item": item_nombre.strip(),
-                        "categoria": categoria,
-                        "origen": "manual_o_voz",
-                        "comprado": False,
-                    }
-                )
-                st.toast(f"'{item_nombre}' añadido a la lista.")
-                st.rerun()
+            if submitted:
+                if not item_nombre.strip():
+                    st.warning("Escribe el nombre del producto.")
+                else:
+                    add_item_lista_compra(
+                        {
+                            "item": item_nombre.strip(),
+                            "origen": "manual_o_voz",
+                            "comprado": False,
+                        }
+                    )
+                    st.toast(f"'{item_nombre}' añadido a la lista.")
+                    st.rerun()
 
         st.divider()
+        st.caption(
+            "Toca un ítem pendiente para marcarlo como comprado; "
+            "toca uno ya comprado para quitarlo de la lista."
+        )
 
-        # Visualización de la lista clasificada por pasillos
         col_pend, col_comp = st.columns(2)
 
         with col_pend:

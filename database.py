@@ -297,6 +297,8 @@ def procesar_y_guardar_ticket_items(items_ticket: list) -> dict:
             ubicacion = "despensa"
 
         gramos = _a_float(item.get("gramos_habituales"))
+        if gramos is not None and gramos <= 0:
+            gramos = None
         indivisible = _a_bool(item.get("es_indivisible"), False)
         cantidad = str(item.get("cantidad_aprox") or "").strip() or "1 unidad"
         supermercado = str(item.get("supermercado") or "").strip() or "General"

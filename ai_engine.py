@@ -30,7 +30,10 @@ class ItemTicket(BaseModel):
     es_alimentacion: bool = Field(description="True si es comida/bebida, False si es limpieza, hogar o higiene")
     supermercado: str = Field(default="General", description="Mercadona, Lidl, Consum, Dia, Carrefour...")
     cantidad_aprox: str = Field(default="1 unidad", description="Ej: '1 bandeja (600g)', '6 unidades'")
-    gramos_habituales: float | None = Field(default=None, description="Peso neto total estimado en gramos")
+    gramos_habituales: float | None = Field(
+        default=None,
+        description="Peso neto total en gramos SOLO si el ticket lo indica de forma explícita (ej. '0,650 kg' o '600 g'). Si no aparece, null: nunca lo estimes ni lo inventes.",
+    )
     es_indivisible: bool = Field(default=False, description="True si es pieza entera no fraccionable (dorada, lubina, pollo entero)")
     ubicacion_defecto: str = Field(default="despensa", description="'nevera', 'congelador', 'despensa' o 'hogar_no_inventariar'")
 
@@ -60,6 +63,9 @@ Reglas estrictas:
    - Conservas, legumbres secas, arroz, pasta, aceite, huevos, especias, bebidas -> 'despensa'.
 6. Marca es_indivisible=True para piezas enteras (dorada, lubina, pollo entero).
 7. Usa el nombre limpio y legible (sin códigos ni abreviaturas raras) en nombre_limpio.
+8. NUNCA inventes ni estimes el peso: rellena gramos_habituales SOLO si el ticket indica
+   el peso de forma explícita (ej. "0,650 kg", "600 g", "1,5 L"). Si el ticket no lo dice,
+   deja gramos_habituales en null, aunque conozcas el producto o su precio.
 """
 
 
@@ -126,6 +132,10 @@ RE_PRECIO_NEGATIVO = re.compile(r"-\s*\d+[.,]\d{2}\s*$")
 RE_CANTIDAD_INICIAL = re.compile(r"^\s*(\d{1,3})\s*(?:x|ud|uds|unid|unidades)?\s+", re.IGNORECASE)
 RE_PESO_INICIAL = re.compile(r"^\s*(\d+[.,]\d{2,3})\s*(kg|g|l|ml)\b", re.IGNORECASE)
 RE_PESO_X_PRECIO = re.compile(r"\b\d+[.,]\d{2,3}\s*(?:kg|g|l|ml)\s*x\s*\d+[.,]\d{2}\b", re.IGNORECASE)
+RE_PESO_EXPLICITO = re.compile(
+    r"\b\d+(?:[.,]\d+)?\s*(?:kg|kilos?|g|gr|gramos?|l|litros?|ml)\b",
+    re.IGNORECASE,
+)
 RE_CODIGO_IVA = re.compile(r"\s+[A-Z]\s*$")
 RE_SOLO_SIMBOLOS = re.compile(r"^[\W\d_]+$")
 RE_HORA = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")
@@ -223,6 +233,16 @@ def _limpiar_nombre_producto(linea: str) -> tuple[str, str | None, float | None]
         nombre = nombre.title()
 
     return nombre, cantidad, gramos
+
+
+def _peso_explicito_en_item(item: dict) -> bool:
+    """True solo si el ticket muestra un peso/volumen real; si no, los gramos sobran."""
+    partes = (
+        item.get("texto_ticket"),
+        item.get("cantidad_aprox"),
+        item.get("nombre_limpio"),
+    )
+    return any(RE_PESO_EXPLICITO.search(str(p)) for p in partes if p)
 
 
 def _clasificar_producto(nombre: str) -> tuple[bool, str, bool]:
@@ -440,6 +460,19 @@ def _procesar_con_gemini(payload_partes: list, texto_apoyo: str | None = None) -
             if len(nombre) < 3:
                 continue
             it["nombre_limpio"] = nombre
+
+            # Los gramos solo se conservan si el ticket los muestra de forma explícita.
+            gramos = it.get("gramos_habituales")
+            try:
+                gramos = None if gramos is None else float(gramos)
+            except (TypeError, ValueError):
+                gramos = None
+            if gramos is not None and (
+                gramos <= 0 or not _peso_explicito_en_item(it)
+            ):
+                gramos = None
+            it["gramos_habituales"] = gramos
+
             ubicacion = it.get("ubicacion_defecto", "despensa")
             if it.get("es_alimentacion") is False:
                 it["ubicacion_defecto"] = "hogar_no_inventariar"
