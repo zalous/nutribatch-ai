@@ -1,6 +1,6 @@
 ---
 documento: Spec Técnico y Funcional
-version: 1.4
+version: 1.5
 stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
 ---
 # Especificacion Tecnica y Funcional
@@ -17,7 +17,7 @@ stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
    - El módulo `ai_engine.py` debe cargar siempre como `system_instruction` las reglas médicas, de porciones y de alimentos de `02_Perfil_Clinico_y_Nutricional.md`.
    - Además, en cada consulta del usuario (por voz o botón), se le inyectará el contexto vivo de Supabase: qué hay en `inventario` (con sus fechas de cocinado), qué hay pendiente en `lista_compra` y cuándo se cocinaron los últimos platos en `registro_comidas`.
 4. **Filosofía de Inventario, Lotes (Batch) y Fechas de Cocinado:**
-   - **Sin básculas:** Cantidades lógicas o aproximadas (unidades, bandejas, tápers). Los gramos son opcionales: si la IA no conoce el peso se dejan vacíos y nunca se inventan.
+   - **Sin básculas:** Cantidades lógicas o aproximadas (unidades, bandejas, tápers). Los gramos son opcionales: si la IA no conoce el peso se dejan vacíos y nunca se inventan; en los tickets solo se guardan cuando el peso aparece escrito de forma explícita (`kg`, `g`, `L`).
    - **Control de Fecha de Cocinado (`fecha_cocinado`):** Cada vez que se cocina un lote de Batch Cooking o una receta que se guarda, se registra exactamente qué día se cocinó. Así la app muestra cuántos días lleva hecho cada táper en la nevera/congelador y la IA puede responder preguntas como "¿Qué día cocinamos las lentejas o el pollo?".
    - **Lógica de Ollas y Raciones:** Las recetas grandes definen cuántas **comidas de pareja** salen de la olla entera (ej. 1 olla = 3 comidas para los dos). Al comer entre semana, se resta solo 1 comida de pareja del lote y se suman únicamente los nutrientes de esa toma individual (aprox. 55% Gonzalo / 45% Marta en guisos para cuadrar 1.700 kcal y 1.350 kcal, o 50/50 en unidades iguales).
    - **Regla de Indivisibles (Regla de la Dorada):** Alimentos que se gastan enteros en una comida nunca se fraccionan crudos.
@@ -103,9 +103,9 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 
 ### Pantalla 1: Planificacion con IA y Lista de la Compra (Segundo Cerebro)
 - **Planificador asistido por IA:** El usuario elige recetas aprobadas o le pide a la IA que diseñe el Batch Cooking y la semana cumpliendo las reglas clínicas.
-- **Lista de la Compra Unificada (simplificada en el Paso 2.6):** Se muestra como una lista limpia de ítems, sin emojis ni etiquetas de categoría visibles y sin botón de aspa de borrado: pulsar el propio ítem lo marca como comprado o lo quita de la lista. El formulario de alta solo pide el nombre del producto (la categoría queda como dato interno opcional). Permite añadir cualquier cosa suelta a mano o con voz en cualquier momento de la semana.
+- **Lista de la Compra Unificada (simplificada en el Paso 2.6):** Se muestra como una lista limpia de ítems, sin emojis, etiquetas de categoría ni aspa de borrado: tocar un ítem pendiente lo marca como comprado y tocar uno ya comprado lo quita de la lista. El formulario de alta solo pide el nombre del producto (la categoría queda como dato interno y usa el valor por defecto de la base de datos). Permite añadir cualquier cosa suelta a mano o con voz en cualquier momento de la semana.
 - **Subida de Ticket (PDF, Foto o CSV):** Tacha lo comprado de la lista, descarta productos de limpieza/hogar y mete la comida en Nevera, Congelador o Despensa.
-- **Revisión editable del ticket (Paso 2.4):** Antes de guardar nada, la vista previa se muestra como tabla editable (`st.data_editor`): se puede cambiar el nombre limpio, marcar/desmarcar si es comida, cambiar la ubicación de destino, ajustar la cantidad, marcar indivisible, desmarcar la casilla `Incluir` para descartar una fila o borrarla directamente. Botones rápidos para descartar todo lo de hogar o restaurar la vista original. Solo las filas incluidas se guardan en `diccionario_tickets` e `inventario`, y solo esas cruzan con `lista_compra`. **Los gramos solo se rellenan si la IA los conoce de verdad: si no, quedan vacíos y nunca se inventan (Paso 2.6).**
+- **Revisión editable del ticket (Paso 2.4):** Antes de guardar nada, la vista previa se muestra como tabla editable (`st.data_editor`): se puede cambiar el nombre limpio, marcar/desmarcar si es comida, cambiar la ubicación de destino, ajustar la cantidad, marcar indivisible, desmarcar la casilla `Incluir` para descartar una fila o borrarla directamente. Botones rápidos para descartar todo lo de hogar o restaurar la vista original. Solo las filas incluidas se guardan en `diccionario_tickets` e `inventario`, y solo esas cruzan con `lista_compra`. **Los gramos solo se rellenan si el ticket los muestra de forma explícita (`kg`, `g`, `L`): el parser local no los estima y Gemini los descarta cuando no constan; si no aparecen, quedan vacíos y nunca se guardan (Paso 2.6).**
 
 ### Pantalla 2: Cocina Diaria, Control de Tápers, Foto en Encimera y Rescate
 - **Cocinar Batch o Receta:** Registra que hoy se ha cocinado un plato (`fecha_cocinado = hoy`), actualiza `ultima_vez_cocinada` en la receta y mete las raciones resultantes en `batch_cocinado` indicando visualmente cuántos días lleva hecho cada táper.
