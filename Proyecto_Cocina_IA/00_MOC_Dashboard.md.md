@@ -1,6 +1,6 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-2-pendiente-validacion-paso-2.5
+estado: fase-2-pendiente-paso-2.6
 fecha_actualizacion: 2026-10-24
 ---
 # Panel de Control y Contexto IA
@@ -19,11 +19,11 @@ fecha_actualizacion: 2026-10-24
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets (2.1, 2.2, 2.3 y 2.4 completados y validados; el 2.5 está implementado y pendiente de tu prueba real).
-- **Último avance:** **Paso 2.4 validado** por el usuario: la vista previa del ticket es una tabla editable (`st.data_editor`) donde se corrige el nombre, se cambia la comida/hogar y el destino, se ajusta la cantidad y los gramos, se marca indivisible, se desmarca `Incluir` o se borra la fila; botones para descartar todo lo de hogar y restaurar la vista original. Solo se guardan las filas incluidas, con la fecha real de compra, cruce de `lista_compra` por palabras completas y alta en `diccionario_tickets` e `inventario`. Además, se implementó el **Paso 2.5** (borrado masivo en Despensa y Lista de la Compra), pendiente de validación.
-- **Cambio técnico relevante:** la cuota gratuita de Gemini es de **20 peticiones/día por modelo y por proyecto**; una clave nueva debe crearse en un **proyecto nuevo** para estrenar cuota. Documentado en `01_Spec_Tecnico_y_Funcional.md` (v1.3) y en `AGENTS.md`.
-- **Archivos de código creados/modificados:** `ai_engine.py`, `database.py`, `requirements.txt`, `views/p1_plan_y_compra.py`, `views/p2_cocinar_hoy.py`, `AGENTS.md`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md`, `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
-- **Próximo paso exacto:** validar el **Paso 2.5** en la app real: marcar varios productos con los checkboxes, borrar seleccionados, vaciar una pestaña y probar "Borrar TODO el inventario" escribiendo `BORRAR`. Si todo va bien, marcarlo como completado y pasar al **Paso 3.1** (motor IA contextual).
+- **Fase Actual:** Fase 2 - Despensa Aproximada, Control de Fechas de Cocinado y Tickets (2.1, 2.2, 2.3, 2.4 y 2.5 completados y validados; queda el 2.6).
+- **Último avance:** **Pasos 2.4 y 2.5 implementados, desplegados (commit `c40aec1`) y validados por el usuario** el 24/10/2026: revisión editable del ticket en tabla (`st.data_editor`) y gestión masiva de la Despensa y la Lista de la Compra (selección múltiple, vaciar pestaña y borrar todo con confirmación `BORRAR`).
+- **Cambio técnico relevante:** la cuota gratuita de Gemini es de **20 peticiones/día por modelo y por proyecto**; una clave nueva debe crearse en un **proyecto nuevo** para estrenar cuota. Documentado en `01_Spec_Tecnico_y_Funcional.md` (v1.4) y en `AGENTS.md`.
+- **Archivos de código creados/modificados:** `database.py`, `requirements.txt`, `views/p1_plan_y_compra.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v1.4), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-10-24_sesion.md`.
+- **Próximo paso exacto:** ejecutar el **Paso 2.6** (revisión y ajustes): no inventar gramos en la tabla del ticket (dejarlos vacíos si la IA no los conoce) y simplificar la Lista de la Compra (sin aspa de borrado ni emojis ni categorías: pulsar el propio ítem lo quita/marca, y el alta solo pide el nombre).
 
 ---
 
@@ -38,7 +38,8 @@ fecha_actualizacion: 2026-10-24
 - [x] **Paso 2.2:** Analizador sintáctico robusto de texto/CSV para tickets (limpieza inteligente de cabeceras corporativas, CIFs, direcciones, IVA y totales de pago, extracción limpia de alimentos y filtrado de productos de hogar/limpieza).
 - [x] **Paso 2.3:** Configuración de Google Gemini API Key (`GEMINI_API_KEY`) en secrets (local y Streamlit Cloud) e integración del modelo `gemini-3.6-flash` para visión artificial multimodal de fotos y PDFs de tickets. *(Validado en local y en Streamlit Cloud con foto real de ticket el 22/10/2026, usando una clave nueva en proyecto nuevo)*
 - [x] **Paso 2.4:** Validación y prueba interactiva del flujo de tickets: interfaz de edición y descarte de filas antes de guardar, cruce con `lista_compra`, guardado en `diccionario_tickets` y carga a `inventario`. *(Implementado y validado por el usuario el 24/10/2026)*
-- [ ] **Paso 2.5:** Gestión masiva de la Despensa: selección múltiple de productos para borrarlos de una sola vez, opción de vaciar la pestaña actual (Nevera, Congelador, Despensa Seca o Tápers Batch) y opción de borrar todo el inventario con confirmación por texto (`BORRAR`). Incluye borrado masivo equivalente en la Lista de la Compra. *(Implementado el 24/10/2026; pendiente de validación real en la app)*
+- [x] **Paso 2.5:** Gestión masiva de la Despensa: selección múltiple de productos para borrarlos de una sola vez, opción de vaciar la pestaña actual (Nevera, Congelador, Despensa Seca o Tápers Batch) y opción de borrar todo el inventario con confirmación por texto (`BORRAR`). Incluye borrado masivo equivalente en la Lista de la Compra. *(Implementado y validado por el usuario el 24/10/2026)*
+- [ ] **Paso 2.6:** Revisión y ajustes de usabilidad: **(a)** no inventar gramos en la tabla del ticket ni al guardar: si la IA no conoce el peso, dejar el campo vacío; **(b)** simplificar la Lista de la Compra: quitar el aspa ❌ de borrado y los emojis/categorías de cada ítem, de forma que pulsar el propio ítem lo marque o lo quite de la lista, mostrándose solo como una lista limpia de ítems; **(c)** el formulario de alta solo pide el nombre del producto, sin selector de categoría (frescos/despensa/congelados/hogar).
 
 ### Fase 3: Motor IA Contextual, Recetas, Batch Cooking y Lista de la Compra (Segundo Cerebro)
 - [ ] **Paso 3.1:** Crear `ai_engine.py` inyectando de forma permanente `02_Perfil_Clinico_y_Nutricional.md` + el estado actual del inventario, tápers con sus fechas de cocinado e historial.
