@@ -381,3 +381,21 @@ def get_registro_comidas_fecha(fecha: str):
         .execute()
     )
     return response.data or []
+
+
+def get_registro_comidas_recientes(limite: int = 25):
+    """Obtiene las últimas comidas registradas, de la más reciente a la más antigua."""
+    supabase = get_supabase_client()
+    try:
+        cantidad = max(1, int(limite))
+    except (TypeError, ValueError):
+        cantidad = 25
+    response = (
+        supabase.table("registro_comidas")
+        .select("*")
+        .order("fecha_consumo", desc=True)
+        .order("created_at", desc=True)
+        .limit(cantidad)
+        .execute()
+    )
+    return response.data or []

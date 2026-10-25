@@ -4,6 +4,8 @@ import os
 import re
 import time
 import unicodedata
+from datetime import date, datetime
+from pathlib import Path
 
 import streamlit as st
 from pydantic import BaseModel, Field
@@ -19,6 +21,12 @@ MODELOS_IA = [
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
 ]
+
+PERFIL_CLINICO_PATH = (
+    Path(__file__).resolve().parent
+    / "Proyecto_Cocina_IA"
+    / "02_Perfil_Clinico_y_Nutricional.md"
+)
 
 
 # =============================================================================
@@ -561,3 +569,438 @@ def procesar_ticket_con_ia(file_upload=None, texto_raw: str = None) -> list[dict
 
     st.error("No se pudo interpretar la imagen del ticket. Prueba con mejor luz y enfoque, o pega el texto.")
     return []
+
+
+# =============================================================================
+# MOTOR IA CONTEXTUAL (PERFIL CLÍNICO + ESTADO VIVO DE SUPABASE)
+# =============================================================================
+INSTRUCCIONES_ASISTENTE = """
+Eres el nutricionista clínico, chef de Batch Cooking y segundo cerebro doméstico
+de Gonzalo y Marta dentro de NutriBatch AI. Respondes en español, de forma breve,
+clara y útil desde el móvil.
+
+El PERFIL CLÍNICO que se incluye a continuación es normativo e inviolable: todas
+tus respuestas, menús, raciones y consejos deben cumplirlo sin que el usuario
+tenga que recordártelo. El CONTEXTO VIVO refleja el estado real de la base de
+datos en este momento.
+
+Reglas de operación:
+1. Usa el contexto vivo para saber qué hay en nevera, congelador, despensa y
+   tápers cocinados. Nunca inventes existencias que no aparezcan en el contexto.
+2. Cada táper o plato de batch_cocinado muestra su fecha_cocinado y los días que
+   lleva hecho. Si te preguntan "¿qué día cocinamos X?" o "¿cuántos días lleva?",
+   responde con esa fecha y los días transcurridos. Distingue siempre entre
+   fecha_cocinado (día en que se cocinó) y fecha_consumo (día en que se comió).
+3. Si un dato no está en el contexto (por ejemplo, un plato que no aparece en el
+   historial o un táper sin fecha), dilo con honestidad; no lo supongas.
+4. Aplica el reparto clínico: 55% Gonzalo / 45% Marta en guisos y 50/50 en
+   piezas iguales, con los objetivos de 1.700 kcal y 1.350-1.400 kcal.
+5. Recuerda las reglas de absorción de hierro de Marta, el control de LDL y
+   ácido úrico de Gonzalo y el diseño antirreflujo de las cenas.
+6. No inventes micronutrientes ni valores nutricionales que no consten en el
+   contexto. Si faltan, indícalo y propone cómo completarlos.
+7. Este motor solo consulta y propone: no afirmes haber añadido, borrado,
+   registrado o modificado nada en la base de datos.
+8. Si el contexto incluye avisos de que alguna fuente no se pudo leer, tenlo en
+   cuenta y dilo cuando afecte a la respuesta.
+""".strip()
+
+
+def cargar_perfil_clinico(ruta: str | None = None) -> str:
+    """Lee el perfil clínico y nutricional que actúa como system_instruction permanente."""
+    return _leer_perfil_clinico(str(ruta) if ruta else None)
+
+
+@st.cache_data(show_spinner=False)
+def _leer_perfil_clinico(ruta: str | None = None) -> str:
+    ruta_path = Path(ruta).expanduser().resolve() if ruta else PERFIL_CLINICO_PATH
+    if not ruta_path.exists():
+        raise FileNotFoundError(
+            f"No se encontró el perfil clínico en {ruta_path}. "
+            "Debe existir Proyecto_Cocina_IA/02_Perfil_Clinico_y_Nutricional.md."
+        )
+    contenido = ruta_path.read_text(encoding="utf-8")
+    if not contenido.strip():
+        raise ValueError(f"El perfil clínico está vacío: {ruta_path}")
+    return contenido
+
+
+def _parsear_fecha(valor) -> date | None:
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    texto = str(valor).strip()
+    if not texto:
+        return None
+    for formato in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(texto[:10], formato).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _fecha_iso(valor) -> str:
+    fecha = _parsear_fecha(valor)
+    return fecha.isoformat() if fecha else ""
+
+
+def _dias_desde(valor) -> int | None:
+    fecha = _parsear_fecha(valor)
+    if not fecha:
+        return None
+    return (date.today() - fecha).days
+
+
+def _formatear_gramos(valor) -> str:
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return ""
+    if numero <= 0:
+        return ""
+    if numero.is_integer():
+        return f"{int(numero)} g"
+    return f"{numero:.1f} g".replace(".", ",")
+
+
+def _resumen_nutricion(nutricion, maximo: int = 360) -> str:
+    if not nutricion:
+        return ""
+    try:
+        texto = json.dumps(nutricion, ensure_ascii=False, sort_keys=True)
+    except (TypeError, ValueError):
+        texto = str(nutricion)
+    texto = " ".join(texto.split())
+    if len(texto) > maximo:
+        return texto[: maximo - 1].rstrip() + "…"
+    return texto
+
+
+def _linea_item_inventario(item: dict) -> str:
+    nombre = str(item.get("nombre") or "").strip() or "Producto sin nombre"
+    partes = [nombre]
+
+    cantidad = str(item.get("cantidad_aprox") or "").strip()
+    if cantidad:
+        partes.append(cantidad)
+
+    gramos = _formatear_gramos(item.get("gramos_estimados"))
+    if gramos:
+        partes.append(gramos)
+
+    fecha_entrada = _fecha_iso(item.get("fecha_entrada"))
+    if fecha_entrada:
+        partes.append(f"entrada {fecha_entrada}")
+
+    fecha_cocinado = _fecha_iso(item.get("fecha_cocinado"))
+    if fecha_cocinado:
+        dias = _dias_desde(item.get("fecha_cocinado"))
+        texto_fecha = f"cocinado {fecha_cocinado}"
+        if dias is not None:
+            if dias == 0:
+                texto_fecha += " (hoy)"
+            elif dias == 1:
+                texto_fecha += " (hace 1 día)"
+            else:
+                texto_fecha += f" (hace {dias} días)"
+        partes.append(texto_fecha)
+
+    if item.get("es_indivisible"):
+        partes.append("indivisible")
+
+    nutricion = _resumen_nutricion(item.get("nutricion_por_comida_pareja"))
+    if nutricion:
+        partes.append(f"nutrición por comida de pareja: {nutricion}")
+
+    return "- " + " | ".join(partes)
+
+
+def _formatear_inventario(items: list[dict], maximo_por_ubicacion: int = 80) -> str:
+    if not items:
+        return "INVENTARIO: vacío."
+
+    etiquetas = [
+        ("nevera", "NEVERA"),
+        ("congelador", "CONGELADOR"),
+        ("despensa", "DESPENSA SECA"),
+        ("batch_cocinado", "TÁPERS COCINADOS (BATCH)"),
+    ]
+
+    bloques = []
+    for ubicacion, titulo in etiquetas:
+        grupo = [
+            item
+            for item in items
+            if str(item.get("ubicacion") or "").strip().lower() == ubicacion
+        ]
+        if not grupo:
+            continue
+        bloques.append(f"{titulo} ({len(grupo)}):")
+        for item in grupo[:maximo_por_ubicacion]:
+            bloques.append(_linea_item_inventario(item))
+        restantes = len(grupo) - maximo_por_ubicacion
+        if restantes > 0:
+            bloques.append(f"- ... y {restantes} producto(s) más en esta ubicación.")
+
+    if not bloques:
+        return "INVENTARIO: vacío."
+    return "\n".join(bloques)
+
+
+def _formatear_tapers(tapers: list[dict], maximo: int = 40) -> str:
+    if not tapers:
+        return "TÁPERS COCINADOS: ninguno."
+
+    ordenados = sorted(
+        tapers,
+        key=lambda item: _parsear_fecha(item.get("fecha_cocinado")) or date.max,
+    )
+
+    bloques = [f"TÁPERS COCINADOS ({len(ordenados)}):"]
+    for item in ordenados[:maximo]:
+        nombre = str(item.get("nombre") or "").strip() or "Táper sin nombre"
+        partes = [nombre]
+
+        cantidad = str(item.get("cantidad_aprox") or "").strip()
+        if cantidad:
+            partes.append(cantidad)
+
+        fecha_cocinado = _fecha_iso(item.get("fecha_cocinado"))
+        if fecha_cocinado:
+            dias = _dias_desde(item.get("fecha_cocinado"))
+            texto_fecha = f"cocinado {fecha_cocinado}"
+            if dias is not None:
+                if dias == 0:
+                    texto_fecha += " (hoy)"
+                elif dias == 1:
+                    texto_fecha += " (hace 1 día)"
+                else:
+                    texto_fecha += f" (hace {dias} días)"
+            partes.append(texto_fecha)
+        else:
+            partes.append("fecha de cocinado sin registrar")
+
+        nutricion = _resumen_nutricion(item.get("nutricion_por_comida_pareja"))
+        if nutricion:
+            partes.append(f"nutrición por comida de pareja: {nutricion}")
+
+        bloques.append("- " + " | ".join(partes))
+
+    restantes = len(ordenados) - maximo
+    if restantes > 0:
+        bloques.append(f"- ... y {restantes} táper(es) más.")
+    return "\n".join(bloques)
+
+
+def _formatear_historial(registros: list[dict], maximo: int = 25) -> str:
+    if not registros:
+        return "HISTORIAL DE COMIDAS: sin registros."
+
+    bloques = [f"HISTORIAL DE COMIDAS (últimos {min(len(registros), maximo)}):"]
+    for registro in registros[:maximo]:
+        fecha_consumo = _fecha_iso(registro.get("fecha_consumo")) or "fecha sin registrar"
+        partes = [f"consumido {fecha_consumo}"]
+
+        momento = str(registro.get("momento") or "").strip()
+        if momento:
+            partes.append(momento)
+
+        descripcion = str(registro.get("descripcion") or "").strip()
+        if descripcion:
+            partes.append(descripcion)
+
+        fecha_cocinado = _fecha_iso(registro.get("fecha_cocinado"))
+        if fecha_cocinado:
+            partes.append(f"cocinado {fecha_cocinado}")
+
+        reparto = str(registro.get("tipo_reparto") or "").strip()
+        if reparto:
+            partes.append(reparto)
+
+        if registro.get("completado") is False:
+            partes.append("pendiente")
+
+        bloques.append("- " + " | ".join(partes))
+    return "\n".join(bloques)
+
+
+def _formatear_lista_compra(items: list[dict], maximo: int = 100) -> str:
+    if not items:
+        return "LISTA DE LA COMPRA PENDIENTE: vacía."
+
+    nombres = [
+        str(item.get("item") or "").strip()
+        for item in items[:maximo]
+        if str(item.get("item") or "").strip()
+    ]
+    if not nombres:
+        return "LISTA DE LA COMPRA PENDIENTE: vacía."
+
+    texto = "LISTA DE LA COMPRA PENDIENTE: " + "; ".join(nombres)
+    restantes = max(0, len(items) - maximo)
+    if restantes > 0:
+        texto += f"; ... y {restantes} más"
+    return texto + "."
+
+
+def construir_contexto_vivo(
+    limite_historial: int = 25,
+    maximo_por_ubicacion: int = 80,
+) -> dict:
+    """
+    Recopila el estado actual de Supabase: inventario, tápers con fecha de
+    cocinado, historial de comidas y lista de la compra pendiente.
+    """
+    import database
+
+    errores: list[str] = []
+    inventario: list[dict] = []
+    historial: list[dict] = []
+    lista_compra: list[dict] = []
+
+    try:
+        inventario = database.get_inventario() or []
+    except Exception as exc:
+        errores.append(f"inventario: {str(exc)[:180]}")
+
+    try:
+        historial = database.get_registro_comidas_recientes(limite_historial) or []
+    except Exception as exc:
+        errores.append(f"historial: {str(exc)[:180]}")
+
+    try:
+        lista_compra = database.get_lista_compra(comprado=False) or []
+    except Exception as exc:
+        errores.append(f"lista_compra: {str(exc)[:180]}")
+
+    tapers = [
+        item
+        for item in inventario
+        if str(item.get("ubicacion") or "").strip().lower() == "batch_cocinado"
+    ]
+    inventario_sin_tapers = [
+        item
+        for item in inventario
+        if str(item.get("ubicacion") or "").strip().lower() != "batch_cocinado"
+    ]
+
+    bloques = [
+        f"FECHA DE HOY: {date.today().isoformat()}",
+        _formatear_inventario(inventario_sin_tapers, maximo_por_ubicacion),
+        _formatear_tapers(tapers),
+        _formatear_historial(historial, limite_historial),
+        _formatear_lista_compra(lista_compra),
+    ]
+    if errores:
+        bloques.append(
+            "AVISOS DE CONTEXTO: no se pudieron leer estas fuentes: "
+            + "; ".join(errores)
+        )
+
+    return {
+        "fecha": date.today().isoformat(),
+        "inventario": inventario,
+        "tapers": tapers,
+        "historial": historial,
+        "lista_compra": lista_compra,
+        "errores": errores,
+        "texto": "\n\n".join(bloques),
+    }
+
+
+def _construir_system_instruction(perfil_clinico: str, contexto_texto: str) -> str:
+    return "\n\n".join(
+        [
+            INSTRUCCIONES_ASISTENTE,
+            "# PERFIL CLÍNICO Y NUTRICIONAL (NORMATIVO)",
+            perfil_clinico.strip(),
+            "# CONTEXTO VIVO DE LA DESPENSA Y EL HISTORIAL",
+            contexto_texto.strip(),
+        ]
+    )
+
+
+def _formatear_historial_chat(historial: list | None) -> str:
+    if not historial:
+        return ""
+
+    lineas = []
+    for turno in historial:
+        if isinstance(turno, dict):
+            rol = str(turno.get("role") or turno.get("rol") or "user").strip().lower()
+            texto = str(
+                turno.get("content")
+                or turno.get("texto")
+                or turno.get("text")
+                or ""
+            ).strip()
+        elif isinstance(turno, (list, tuple)) and len(turno) >= 2:
+            rol = str(turno[0]).strip().lower()
+            texto = str(turno[1]).strip()
+        else:
+            continue
+        if not texto:
+            continue
+        etiqueta = "Usuario" if rol in ("user", "usuario") else "Asistente"
+        lineas.append(f"{etiqueta}: {texto}")
+    return "\n".join(lineas[-12:])
+
+
+def motor_contextual_disponible() -> bool:
+    """True si hay clave de Gemini y el perfil clínico está accesible."""
+    return tiene_gemini_key() and PERFIL_CLINICO_PATH.exists()
+
+
+def consultar_asistente(
+    pregunta: str,
+    historial_conversacion: list | None = None,
+    contexto: dict | None = None,
+) -> str:
+    """
+    Responde una consulta con el perfil clínico inyectado como system_instruction
+    y el estado vivo de Supabase. Devuelve el texto de la respuesta.
+    """
+    pregunta = (pregunta or "").strip()
+    if not pregunta:
+        raise ValueError("La consulta está vacía.")
+
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        raise RuntimeError(
+            "Falta GEMINI_API_KEY. Configúrala en .streamlit/secrets.toml "
+            "o en los Secrets de Streamlit Cloud."
+        )
+
+    perfil_clinico = cargar_perfil_clinico()
+    contexto_vivo = contexto if contexto is not None else construir_contexto_vivo()
+    system_instruction = _construir_system_instruction(
+        perfil_clinico, str(contexto_vivo.get("texto") or "")
+    )
+
+    partes = []
+    transcripcion = _formatear_historial_chat(historial_conversacion)
+    if transcripcion:
+        partes.append(f"Conversación previa:\n{transcripcion}")
+    partes.append(f"Consulta actual del usuario:\n{pregunta}")
+
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=gemini_key)
+    config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        temperature=0.4,
+    )
+
+    response = _generar_con_fallback(client, ["\n\n".join(partes)], config)
+    try:
+        texto = (response.text or "").strip()
+    except Exception:
+        texto = ""
+    if not texto:
+        raise RuntimeError("Gemini devolvió una respuesta vacía. Inténtalo de nuevo.")
+    return texto
