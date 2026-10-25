@@ -119,6 +119,20 @@ def add_item_lista_compra(item_data: dict):
     return response.data
 
 
+def add_items_lista_compra(items_data: list[dict]):
+    """Añade varios ítems a la lista de la compra en una sola petición."""
+    filas = [
+        dict(item)
+        for item in (items_data or [])
+        if isinstance(item, dict) and str(item.get("item") or "").strip()
+    ]
+    if not filas:
+        return []
+    supabase = get_supabase_client()
+    response = supabase.table("lista_compra").insert(filas).execute()
+    return response.data or []
+
+
 def marcar_item_lista_compra(item_id: str, comprado: bool = True):
     """Marca o desmarca un ítem de la lista de la compra como comprado."""
     supabase = get_supabase_client()
@@ -247,6 +261,11 @@ def _coincide_producto(nombre_a: str, nombre_b: str) -> bool:
     if not tokens_a or not tokens_b:
         return False
     return tokens_a.issubset(tokens_b) or tokens_b.issubset(tokens_a)
+
+
+def coincide_producto(nombre_a: str, nombre_b: str) -> bool:
+    """Cruce público de nombres de producto (también usado por la lista inteligente)."""
+    return _coincide_producto(nombre_a, nombre_b)
 
 
 def procesar_y_guardar_ticket_items(items_ticket: list) -> dict:

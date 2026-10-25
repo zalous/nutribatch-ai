@@ -14,7 +14,7 @@ from database import (
     get_diccionario_tickets,
 )
 from ai_engine import procesar_ticket_con_ia, tiene_gemini_key
-from views import recetas_batch
+from views import lista_compra_inteligente, recetas_batch
 
 
 UBICACIONES_TICKET = ["nevera", "congelador", "despensa", "hogar_no_inventariar"]
@@ -265,6 +265,8 @@ def render():
     # TAB 1: LISTA DE LA COMPRA
     # -------------------------------------------------------------------------
     with tab_lista:
+        lista_compra_inteligente.render()
+        st.divider()
         st.subheader("Añadir a la lista")
         with st.form("form_nuevo_item", clear_on_submit=True):
             item_nombre = st.text_input(

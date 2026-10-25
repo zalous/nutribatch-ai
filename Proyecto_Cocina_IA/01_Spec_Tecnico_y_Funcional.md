@@ -1,6 +1,6 @@
 ---
 documento: Spec Técnico y Funcional
-version: 1.5
+version: 1.7
 stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
 ---
 # Especificacion Tecnica y Funcional
@@ -35,9 +35,11 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 - `database.py` (Conexión y consultas a Supabase)
 - `ai_engine.py` (Cerebro IA con System Prompt clínico/batch, lector de tickets, fotos, voz y planificador)
 - **Subcarpeta `views/`:**
-  - `p1_plan_y_compra.py` (Planificador con IA, Recetas aprobadas, Lista de la Compra Unificada Comida+Hogar y Subida de Ticket)
+  - `p1_plan_y_compra.py` (Planificador con IA, Lista de la Compra Unificada Comida+Hogar y Subida de Ticket. Integra el gestor de recetas y el segundo cerebro de compras)
+  - `lista_compra_inteligente.py` (Segundo cerebro de la compra: selector de recetas de la semana, cruce de ingredientes con inventario y lista, y alta automática de faltantes)
+  - `recetas_batch.py` (Catálogo de recetas aprobadas, alta/edición/borrado y cálculo del reparto batch 55% Gonzalo / 45% Marta)
   - `p2_cocinar_hoy.py` (Nevera/Congelador con fechas de cocinado, Check de cocinado/comido, Foto en encimera y Recetas de rescate Mié/Jue)
-  - `p3_asistente_voz.py` (Consultor por Voz y Texto: pedir ideas de batch/cenas/desayunos, añadir a la lista de la compra o preguntar qué día se cocinó un plato)
+  - `p3_asistente_voz.py` (Consultor por Voz y Texto: pedir ideas de batch/cenas/desayunos, añadir a la lista de la compra o preguntar qué día se cocinó un plato. En la Fase 3 ya ofrece una consulta de texto de solo lectura)
   - `p4_salud_nutri.py` (Progreso diario Gonzalo vs Marta y Panel semanal de macros, vitaminas y minerales)
 
 ---
@@ -72,9 +74,9 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 - `aprobada` (Boolean) — `True` si está en el catálogo fijo de favoritas.
 - `comidas_pareja_por_olla` (Integer) — Para cuántos días/comidas de los dos da esta elaboración.
 - `guia_emplatado` (Text) — Cómo repartir la olla en tápers y cuántos cazos se sirve Gonzalo (55%) y Marta (45%).
-- `ingredientes_json` (JSONB)
+- `ingredientes_json` (JSONB) — Lista de objetos con la forma `[{"nombre": "Lentejas", "cantidad": "300 g"}, ...]`. La cantidad es opcional.
 - `pasos_preparacion` (Text)
-- `nutricion_por_comida_pareja` (JSONB)
+- `nutricion_por_comida_pareja` (JSONB) — Nutrientes de **una comida de pareja**, nunca de una persona ni de la olla entera. Claves admitidas: `kcal`, `proteinas_g`, `carbohidratos_g`, `grasas_g`, `grasas_saturadas_g`, `fibra_g`, `azucares_g`, `hierro_mg`, `vitamina_c_mg`, `calcio_mg`, `vitamina_d_ug`. Solo se guardan valores mayores que 0 y nunca se inventan. El reparto 55/45 y los totales de la olla se calculan al vuelo y no se almacenan.
 - `ultima_vez_cocinada` (Date, opcional) — Se actualiza automáticamente cada vez que se cocina esa receta para poder preguntarle a la IA "¿Qué día hicimos este plato por última vez?".
 
 ### Tabla 4: `registro_comidas` (Historial de Cocinado y Consumo Nutricional)
@@ -103,7 +105,9 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 
 ### Pantalla 1: Planificacion con IA y Lista de la Compra (Segundo Cerebro)
 - **Planificador asistido por IA:** El usuario elige recetas aprobadas o le pide a la IA que diseñe el Batch Cooking y la semana cumpliendo las reglas clínicas.
+- **Gestor de Recetas Aprobadas y Batch Cooking (Paso 3.2):** Pestaña **🍲 Recetas y Batch** con métricas de catálogo, buscador, filtro de aprobadas y fichas desplegables. Permite crear, editar, aprobar/desaprobar y eliminar recetas. Cada receta define su tipo, ingredientes, preparación, `comidas_pareja_por_olla` y, opcionalmente, la nutrición por comida de pareja. La app muestra el reparto **55% Gonzalo / 45% Marta**, el total de la olla y el porcentaje que representa sobre las 1.700 kcal de Gonzalo y las 1.350 kcal de Marta. La guía de emplatado se autogenera si se deja vacía.
 - **Lista de la Compra Unificada (simplificada en el Paso 2.6):** Se muestra como una lista limpia de ítems, sin emojis, etiquetas de categoría ni aspa de borrado: tocar un ítem pendiente lo marca como comprado y tocar uno ya comprado lo quita de la lista. El formulario de alta solo pide el nombre del producto (la categoría queda como dato interno y usa el valor por defecto de la base de datos). Permite añadir cualquier cosa suelta a mano o con voz en cualquier momento de la semana.
+- **Segundo Cerebro de la compra (Paso 3.3):** En la pestaña Lista de la Compra se eligen las recetas de la semana y la app une automáticamente sus ingredientes. Cada ingrediente se clasifica como **✅ En despensa** (coincide con nevera, congelador o despensa; los tápers ya cocinados no cuentan como ingrediente crudo), **🛍️ Ya comprado**, **📝 Ya en la lista** o **➕ Falta**. Un solo botón añade todos los faltantes con `origen = plan_recetas` y categoría interna inferida. Los ingredientes repetidos entre recetas se agrupan y sus cantidades se muestran sumadas de forma orientativa. La selección de recetas se conserva en la URL (`?plan=id1,id2`) para no perderla al recargar. **No requiere cambios de esquema ni migración de base de datos.**
 - **Subida de Ticket (PDF, Foto o CSV):** Tacha lo comprado de la lista, descarta productos de limpieza/hogar y mete la comida en Nevera, Congelador o Despensa.
 - **Revisión editable del ticket (Paso 2.4):** Antes de guardar nada, la vista previa se muestra como tabla editable (`st.data_editor`): se puede cambiar el nombre limpio, marcar/desmarcar si es comida, cambiar la ubicación de destino, ajustar la cantidad, marcar indivisible, desmarcar la casilla `Incluir` para descartar una fila o borrarla directamente. Botones rápidos para descartar todo lo de hogar o restaurar la vista original. Solo las filas incluidas se guardan en `diccionario_tickets` e `inventario`, y solo esas cruzan con `lista_compra`. **Los gramos solo se rellenan si el ticket los muestra de forma explícita (`kg`, `g`, `L`): el parser local no los estima y Gemini los descarta cuando no constan; si no aparecen, quedan vacíos y nunca se guardan (Paso 2.6).**
 
@@ -115,7 +119,8 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 - **Gestión masiva de la despensa (Paso 2.5):** Cada pestaña permite seleccionar varios productos con checkbox (incluido "seleccionar todos") y borrarlos de una sola vez. Además, un desplegable "Zona peligrosa" ofrece vaciar solo la pestaña actual o borrar todo el inventario; el borrado total exige escribir la palabra `BORRAR` como confirmación. La Lista de la Compra tiene el mismo borrado múltiple.
 
 ### Pantalla 3: Asistente por Voz y Consultor con Memoria
-- Micrófono directo (`st.audio_input`) y chat rápido donde la IA tiene todo el contexto clínico y de base de datos.
+- **Consulta contextual de solo lectura (Paso 3.1, ya disponible):** La pestaña Voz permite escribir una pregunta y recibir respuesta de Gemini con el `system_instruction` clínico permanente y el contexto vivo de Supabase (inventario, tápers con `fecha_cocinado` y días transcurridos, historial de comidas y lista de la compra pendiente). Incluye un desplegable para revisar el contexto enviado. Este modo no modifica la base de datos.
+- **Fase 4:** Micrófono directo (`st.audio_input`) y chat rápido donde la IA tiene todo el contexto clínico y de base de datos, además de poder ejecutar acciones (añadir a la compra, actualizar inventario o marcar "Check Comido").
 - Casos de uso directos por voz:
   1. *"¿Qué día cocinamos las lentejas que están en la nevera?"* o *"¿Cuándo fue la última vez que hicimos salmón?"*.
   2. *"Apúntame en la lista de la compra bolsas de basura, café y aguacates"*.
