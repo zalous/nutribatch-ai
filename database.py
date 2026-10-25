@@ -370,6 +370,32 @@ def get_recetas(aprobadas_solamente: bool = False):
     return response.data or []
 
 
+def add_receta(receta_data: dict):
+    """Añade una nueva receta al catálogo."""
+    supabase = get_supabase_client()
+    response = supabase.table("recetas").insert(receta_data).execute()
+    return response.data
+
+
+def update_receta(receta_id: str, update_data: dict):
+    """Actualiza los datos de una receta existente."""
+    supabase = get_supabase_client()
+    response = (
+        supabase.table("recetas")
+        .update(update_data)
+        .eq("id", receta_id)
+        .execute()
+    )
+    return response.data
+
+
+def delete_receta(receta_id: str):
+    """Elimina una receta del catálogo por su ID."""
+    supabase = get_supabase_client()
+    response = supabase.table("recetas").delete().eq("id", receta_id).execute()
+    return response.data
+
+
 def get_registro_comidas_fecha(fecha: str):
     """Obtiene el registro nutricional y de comidas para una fecha concreta (YYYY-MM-DD)."""
     supabase = get_supabase_client()

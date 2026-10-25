@@ -14,6 +14,7 @@ from database import (
     get_diccionario_tickets,
 )
 from ai_engine import procesar_ticket_con_ia, tiene_gemini_key
+from views import recetas_batch
 
 
 UBICACIONES_TICKET = ["nevera", "congelador", "despensa", "hogar_no_inventariar"]
@@ -257,7 +258,7 @@ def render():
     st.caption("Segundo cerebro unificado para comida, hogar y compras del súper.")
 
     tab_lista, tab_ticket, tab_plan, tab_dicc = st.tabs(
-        ["📝 Lista de la Compra", "🧾 Subir Ticket (IA)", "📅 Plan Semanal", "📖 Memoria Tickets"]
+        ["📝 Lista de la Compra", "🧾 Subir Ticket (IA)", "🍲 Recetas y Batch", "📖 Memoria Tickets"]
     )
 
     # -------------------------------------------------------------------------
@@ -488,13 +489,10 @@ def render():
                     st.rerun()
 
     # -------------------------------------------------------------------------
-    # TAB 3: PLAN SEMANAL BATCH COOKING
+    # TAB 3: RECETAS APROBADAS Y BATCH COOKING
     # -------------------------------------------------------------------------
     with tab_plan:
-        st.subheader("Planificador Batch Cooking")
-        st.info(
-            "En la Fase 3, aquí podrás generar planes semanales automáticos con la IA que cuadren las 1.700 kcal de Gonzalo y las 1.350 kcal de Marta."
-        )
+        recetas_batch.render()
 
     # -------------------------------------------------------------------------
     # TAB 4: MEMORIA Y DICCIONARIO DE TICKETS
