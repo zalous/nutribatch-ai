@@ -143,18 +143,22 @@ Reglas estrictas:
 7. Respeta el perfil clínico adjunto: evita harinas refinadas y alubias
    blancas, prioriza cocciones suaves antirreflujo y recuerda la sinergia
    hierro + vitamina C de Marta.
-8. Si un alimento es una variación o preparación de un producto que aparece en
-   el inventario actual (marinado, aliñado, troceado, cocido, congelado, con
-   especias o limón...), devuélvelo con el nombre exacto del inventario en
-   nombre_inventario y explica la variación en notas. Ejemplo: ves "pavo
-   marinado" y en el inventario está "Pechuga de pavo" -> nombre="Pavo
-   marinado", nombre_inventario="Pechuga de pavo", notas="marinado".
+8. PRIORIDAD ABSOLUTA DEL INVENTARIO: antes de decidir que un ingrediente no
+   está en el inventario, compáralo con TODOS los nombres de la lista. Una
+   preparación distinta (marinado, adobado, aliñado, cocido, troceado,
+   fileteado...) NO justifica dejarlo sin emparejar: si el alimento base
+   coincide (pavo, pollo, arroz, tomate...), rellena nombre_inventario con el
+   nombre EXACTO del inventario. Ejemplo: ves "pavo adobado con especias" y en
+   el inventario está "Pechuga de pavo fileteada" -> nombre="Pavo adobado",
+   nombre_inventario="Pechuga de pavo fileteada", notas="adobado y con especias".
 9. Ten en cuenta el contexto que aporte el usuario (por ejemplo "el pavo lo he
-   marinado yo") para emparejar ingredientes con el inventario y para
-   interpretar la foto. Ese contexto manda sobre tu primera impresión.
+   adobado yo") para emparejar ingredientes con el inventario. Ese contexto
+   manda sobre tu primera impresión.
 10. Nunca cambies el nombre visible del alimento: usa nombre para lo que ves y
     nombre_inventario solo para indicar con qué producto del inventario se
     corresponde y descontarlo.
+11. Solo deja nombre_inventario en null si de verdad no hay ningún producto del
+    inventario relacionado con ese alimento.
 """.strip()
 
 

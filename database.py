@@ -294,24 +294,73 @@ def coincide_producto(nombre_a: str, nombre_b: str) -> bool:
     return _coincide_producto(nombre_a, nombre_b)
 
 
+PALABRAS_PREPARACION = {
+    "adobado", "adobada", "adobados", "adobadas", "adobo",
+    "marinado", "marinada", "marinados", "marinadas", "marinada",
+    "alinado", "alinada", "alinados", "alinadas",
+    "condimentado", "condimentada", "condimentados", "condimentadas",
+    "sazonado", "sazonada", "sazonados", "sazonadas",
+    "aderezado", "aderezada", "aderezados", "aderezadas",
+    "especiado", "especiada", "especiados", "especiadas", "especias",
+    "ahumado", "ahumada", "ahumados", "ahumadas",
+    "curado", "curada", "curados", "curadas",
+    "salado", "salada", "salados", "saladas",
+    "cocido", "cocida", "cocidos", "cocidas",
+    "asado", "asada", "asados", "asadas",
+    "frito", "frita", "fritos", "fritas",
+    "guisado", "guisada", "guisados", "guisadas",
+    "plancha", "horno", "vapor",
+    "troceado", "troceada", "troceados", "troceadas",
+    "picado", "picada", "picados", "picadas",
+    "fileteado", "fileteada", "fileteados", "fileteadas", "filetes",
+    "laminado", "laminada", "laminados", "laminadas",
+    "rallado", "rallada", "rallados", "ralladas",
+    "entero", "entera", "enteros", "enteras",
+    "natural", "fresco", "fresca", "frescos", "frescas",
+    "congelado", "congelada", "congelados", "congeladas",
+    "descongelado", "descongelada", "descongelados", "descongeladas",
+    "limon", "ajo", "ajo.", "hierbas", "salsa", "pimienta",
+    "lata", "latas", "bandeja", "bandejas", "paquete", "paquetes",
+    "unidad", "unidades", "racion", "raciones", "porcion", "porciones",
+}
+
+
+def _stem_token(token: str) -> str:
+    """Reduce plurales y unifica género para comparar ('pavo'/'pava')."""
+    texto = str(token or "")
+    if len(texto) > 4 and texto.endswith("es"):
+        texto = texto[:-2]
+    elif len(texto) > 3 and texto.endswith("s"):
+        texto = texto[:-1]
+    if len(texto) > 4 and texto[-1] in ("a", "o"):
+        texto = texto[:-1]
+    return texto
+
+
+_STEMS_PREPARACION = {_stem_token(palabra) for palabra in PALABRAS_PREPARACION}
+
+
 def _tokens_significativos(texto: str) -> set:
     vacias = {
         "de", "del", "la", "el", "los", "las", "y", "con", "al", "en",
         "un", "una", "unos", "unas", "para", "por", "aprox", "aprox.",
     }
-    return {
-        token
+    tokens = {
+        _stem_token(token)
         for token in _normalizar_texto(texto).split()
         if token not in vacias and len(token) > 1
     }
+    sin_preparacion = tokens - _STEMS_PREPARACION
+    return sin_preparacion or tokens
 
 
 def puntuar_coincidencia(nombre_a: str, nombre_b: str) -> float:
     """
     Puntúa de 0 a 1 cuánto se parecen dos nombres de producto.
 
-    Sirve para emparejar variaciones como 'pavo marinado' con 'Pechuga de pavo'
-    sin confundir 'sal' con 'salmón' (se comparan palabras completas).
+    Antes de comparar elimina palabras de preparación (adobado, marinado,
+    fileteado...) y unifica plurales/género. Así 'pavo adobado con especias'
+    empareja con 'Pechuga de pavo fileteada', que es lo que hay almacenado.
     """
     tokens_a = _tokens_significativos(nombre_a)
     tokens_b = _tokens_significativos(nombre_b)
@@ -323,7 +372,7 @@ def puntuar_coincidencia(nombre_a: str, nombre_b: str) -> float:
     if not comunes:
         return 0.0
     if tokens_a.issubset(tokens_b) or tokens_b.issubset(tokens_a):
-        return 0.9
+        return 0.95
     return round(len(comunes) / min(len(tokens_a), len(tokens_b)), 2)
 
 
