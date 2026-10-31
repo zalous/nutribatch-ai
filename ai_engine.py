@@ -52,6 +52,37 @@ class ResultadoTicket(BaseModel):
     items: list[ItemTicket]
 
 
+class IngredienteEncimera(BaseModel):
+    nombre: str = Field(description="Nombre claro del ingrediente crudo visible, ej. 'Pechuga de pollo'")
+    cantidad_aprox: str = Field(default="1 unidad", description="Cantidad aproximada visible: '2 unidades', '1 bandeja', '1 puñado'")
+    gramos_estimados: float | None = Field(
+        default=None,
+        description="Gramos SOLO si se lee un peso explícito en el envase o etiqueta. Si no, null: nunca se estima a ojo.",
+    )
+    es_indivisible: bool = Field(default=False, description="True si es una pieza entera que se gasta de una vez")
+
+
+class NutricionEncimera(BaseModel):
+    kcal: float = Field(default=0, description="Calorías estimadas de UNA comida de pareja (los dos juntos)")
+    proteinas_g: float = Field(default=0)
+    carbohidratos_g: float = Field(default=0)
+    grasas_g: float = Field(default=0)
+    grasas_saturadas_g: float = Field(default=0)
+    fibra_g: float = Field(default=0)
+    azucares_g: float = Field(default=0)
+    hierro_mg: float = Field(default=0)
+    vitamina_c_mg: float = Field(default=0)
+    calcio_mg: float = Field(default=0)
+    vitamina_d_ug: float = Field(default=0)
+
+
+class ResultadoEncimera(BaseModel):
+    ingredientes: list[IngredienteEncimera]
+    descripcion_plato: str = Field(description="Descripción breve del plato que se puede preparar con lo fotografiado")
+    comidas_pareja_estimadas: int = Field(default=1, description="Cuántas comidas de pareja salen aproximadamente")
+    nutricion_por_comida_pareja: NutricionEncimera
+
+
 SYSTEM_PROMPT_TICKETS = """
 Eres un experto lector de tickets de supermercados españoles (Mercadona, Lidl, Consum, Dia, Carrefour, Alcampo...).
 Analiza la imagen, PDF o texto del ticket y extrae SOLO los productos realmente comprados.
@@ -75,6 +106,31 @@ Reglas estrictas:
    el peso de forma explícita (ej. "0,650 kg", "600 g", "1,5 L"). Si el ticket no lo dice,
    deja gramos_habituales en null, aunque conozcas el producto o su precio.
 """
+
+
+SYSTEM_PROMPT_ENCIMERA = """
+Eres el chef de Batch Cooking de Gonzalo y Marta. Analizas la foto de los
+ingredientes crudos colocados sobre la encimera de la cocina.
+
+Reglas estrictas:
+1. Identifica SOLO alimentos crudos o platos visibles. Ignora utensilios,
+   electrodomésticos, trapos, envases vacíos y cualquier objeto no comestible.
+2. Agrupa los alimentos iguales en una sola línea e indica una cantidad
+   aproximada lógica ("2 unidades", "1 bandeja", "1 puñado").
+3. NUNCA inventes gramos: rellena gramos_estimados SOLO si se lee un peso
+   explícito en el envase o etiqueta (ej. "600 g", "1 kg"). Si no consta,
+   deja gramos_estimados en null.
+4. Marca es_indivisible=True solo en piezas enteras que se gastan de una vez
+   (dorada, lubina, pollo entero, aguacate entero).
+5. Describe en una frase el plato o batch que se puede preparar con esos
+   ingredientes y calcula cuántas comidas de pareja salen aproximadamente.
+6. Estima la nutrición de UNA comida de pareja (los dos juntos) de forma
+   aproximada y redondeada. Si un nutriente no se puede estimar con criterio,
+   déjalo en 0. Nunca inventes micronutrientes que no puedas justificar.
+7. Respeta el perfil clínico adjunto: evita harinas refinadas y alubias
+   blancas, prioriza cocciones suaves antirreflujo y recuerda la sinergia
+   hierro + vitamina C de Marta.
+""".strip()
 
 
 # =============================================================================
@@ -569,6 +625,133 @@ def procesar_ticket_con_ia(file_upload=None, texto_raw: str = None) -> list[dict
 
     st.error("No se pudo interpretar la imagen del ticket. Prueba con mejor luz y enfoque, o pega el texto.")
     return []
+
+
+# =============================================================================
+# FOTO EN ENCIMERA (INGREDIENTES CRUDOS)
+# =============================================================================
+CLAVES_NUTRICION = (
+    "kcal",
+    "proteinas_g",
+    "carbohidratos_g",
+    "grasas_g",
+    "grasas_saturadas_g",
+    "fibra_g",
+    "azucares_g",
+    "hierro_mg",
+    "vitamina_c_mg",
+    "calcio_mg",
+    "vitamina_d_ug",
+)
+
+
+def _numero_positivo(valor) -> float | None:
+    """Convierte a float y descarta ceros, negativos y valores no numéricos."""
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    if numero <= 0:
+        return None
+    return round(numero, 1)
+
+
+def reconocer_ingredientes_encimera(file_upload) -> dict:
+    """
+    Reconoce con Gemini Vision los ingredientes crudos de una foto de encimera.
+
+    Devuelve:
+      {
+        "ingredientes": [{"nombre", "cantidad_aprox", "gramos_estimados", "es_indivisible"}],
+        "descripcion_plato": str,
+        "comidas_pareja_estimadas": int,
+        "nutricion_por_comida_pareja": {"kcal": ..., ...},
+      }
+    Lanza RuntimeError si falta la clave, falla Gemini o no se reconoce nada.
+    """
+    if file_upload is None:
+        raise RuntimeError("No se ha recibido ninguna foto.")
+
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        raise RuntimeError(
+            "Falta GEMINI_API_KEY. Configúrala en .streamlit/secrets.toml "
+            "o en los Secrets de Streamlit Cloud para analizar fotos."
+        )
+
+    mime_type = getattr(file_upload, "type", "") or "image/jpeg"
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=gemini_key)
+        perfil_clinico = cargar_perfil_clinico()
+
+        contents = [
+            SYSTEM_PROMPT_ENCIMERA,
+            "# PERFIL CLÍNICO Y NUTRICIONAL (NORMATIVO)\n" + perfil_clinico.strip(),
+            types.Part.from_bytes(
+                data=file_upload.getvalue(),
+                mime_type=mime_type or "image/jpeg",
+            ),
+        ]
+
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=ResultadoEncimera,
+            temperature=0.2,
+        )
+
+        response = _generar_con_fallback(client, contents, config)
+        data = json.loads(response.text)
+    except Exception as exc:
+        raise RuntimeError(f"No se pudo analizar la foto: {str(exc)[:300]}") from exc
+
+    ingredientes: list[dict] = []
+    for item in data.get("ingredientes") or []:
+        nombre = str(item.get("nombre") or "").strip()
+        if len(nombre) < 2:
+            continue
+        cantidad = str(item.get("cantidad_aprox") or "").strip() or "1 unidad"
+        ingredientes.append(
+            {
+                "nombre": nombre,
+                "cantidad_aprox": cantidad,
+                "gramos_estimados": _numero_positivo(item.get("gramos_estimados")),
+                "es_indivisible": bool(item.get("es_indivisible")),
+            }
+        )
+
+    if not ingredientes:
+        raise RuntimeError(
+            "La IA no ha reconocido ingredientes claros en la foto. "
+            "Prueba con más luz, menos desorden y los alimentos bien visibles."
+        )
+
+    nutricion_cruda = data.get("nutricion_por_comida_pareja") or {}
+    nutricion = {}
+    for clave in CLAVES_NUTRICION:
+        valor = _numero_positivo(nutricion_cruda.get(clave))
+        if valor is not None:
+            nutricion[clave] = valor
+
+    try:
+        comidas = int(data.get("comidas_pareja_estimadas") or 1)
+    except (TypeError, ValueError):
+        comidas = 1
+    comidas = max(1, min(20, comidas))
+
+    descripcion = str(data.get("descripcion_plato") or "").strip()
+    if not descripcion:
+        descripcion = "Plato preparado con los ingredientes de la encimera"
+
+    return {
+        "ingredientes": ingredientes,
+        "descripcion_plato": descripcion,
+        "comidas_pareja_estimadas": comidas,
+        "nutricion_por_comida_pareja": nutricion,
+    }
 
 
 # =============================================================================

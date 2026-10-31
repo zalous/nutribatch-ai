@@ -51,6 +51,20 @@ def add_item_inventario(item_data: dict):
     return response.data
 
 
+def add_items_inventario(items_data: list[dict]):
+    """Añade varios alimentos o tápers al inventario en una sola petición."""
+    filas = [
+        dict(item)
+        for item in (items_data or [])
+        if isinstance(item, dict) and str(item.get("nombre") or "").strip()
+    ]
+    if not filas:
+        return []
+    supabase = get_supabase_client()
+    response = supabase.table("inventario").insert(filas).execute()
+    return response.data or []
+
+
 def delete_item_inventario(item_id: str):
     """Elimina un alimento del inventario por su ID."""
     supabase = get_supabase_client()
@@ -456,3 +470,10 @@ def get_registro_comidas_recientes(limite: int = 25):
         .execute()
     )
     return response.data or []
+
+
+def add_registro_comida(registro_data: dict):
+    """Inserta una comida consumida en el historial nutricional."""
+    supabase = get_supabase_client()
+    response = supabase.table("registro_comidas").insert(registro_data).execute()
+    return response.data
