@@ -294,6 +294,58 @@ def coincide_producto(nombre_a: str, nombre_b: str) -> bool:
     return _coincide_producto(nombre_a, nombre_b)
 
 
+def _tokens_significativos(texto: str) -> set:
+    vacias = {
+        "de", "del", "la", "el", "los", "las", "y", "con", "al", "en",
+        "un", "una", "unos", "unas", "para", "por", "aprox", "aprox.",
+    }
+    return {
+        token
+        for token in _normalizar_texto(texto).split()
+        if token not in vacias and len(token) > 1
+    }
+
+
+def puntuar_coincidencia(nombre_a: str, nombre_b: str) -> float:
+    """
+    Puntúa de 0 a 1 cuánto se parecen dos nombres de producto.
+
+    Sirve para emparejar variaciones como 'pavo marinado' con 'Pechuga de pavo'
+    sin confundir 'sal' con 'salmón' (se comparan palabras completas).
+    """
+    tokens_a = _tokens_significativos(nombre_a)
+    tokens_b = _tokens_significativos(nombre_b)
+    if not tokens_a or not tokens_b:
+        return 0.0
+    if tokens_a == tokens_b:
+        return 1.0
+    comunes = tokens_a & tokens_b
+    if not comunes:
+        return 0.0
+    if tokens_a.issubset(tokens_b) or tokens_b.issubset(tokens_a):
+        return 0.9
+    return round(len(comunes) / min(len(tokens_a), len(tokens_b)), 2)
+
+
+def mejor_coincidencia_producto(
+    nombre: str, candidatos: list[tuple[str, str]], umbral: float = 0.5
+) -> tuple[str | None, float]:
+    """
+    Devuelve (clave, puntuación) del candidato que mejor encaja con `nombre`.
+    `candidatos` es una lista de tuplas (clave, nombre_producto).
+    """
+    mejor_clave = None
+    mejor_puntuacion = 0.0
+    for clave, candidato in candidatos or []:
+        puntuacion = puntuar_coincidencia(nombre, candidato)
+        if puntuacion > mejor_puntuacion:
+            mejor_puntuacion = puntuacion
+            mejor_clave = clave
+    if mejor_puntuacion < umbral:
+        return None, mejor_puntuacion
+    return mejor_clave, mejor_puntuacion
+
+
 def procesar_y_guardar_ticket_items(items_ticket: list) -> dict:
     """
     Recibe la lista de dicts ya revisada y filtrada por el usuario en la interfaz:

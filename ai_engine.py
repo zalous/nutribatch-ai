@@ -60,6 +60,19 @@ class IngredienteEncimera(BaseModel):
         description="Gramos SOLO si se lee un peso explícito en el envase o etiqueta. Si no, null: nunca se estima a ojo.",
     )
     es_indivisible: bool = Field(default=False, description="True si es una pieza entera que se gasta de una vez")
+    nombre_inventario: str | None = Field(
+        default=None,
+        description=(
+            "Nombre EXACTO del producto del inventario actual que corresponde a este "
+            "ingrediente, aunque haya variaciones (marinado, aliñado, troceado, cocido...). "
+            "Ej. si ves 'pavo marinado' y en el inventario está 'Pechuga de pavo', aquí va "
+            "'Pechuga de pavo'. Si no corresponde a ningún producto del inventario, null."
+        ),
+    )
+    notas: str | None = Field(
+        default=None,
+        description="Aclaración breve de la variación detectada (ej. 'marinado por el usuario', 'ya cocido', 'troceado').",
+    )
 
 
 class NutricionEncimera(BaseModel):
@@ -130,6 +143,18 @@ Reglas estrictas:
 7. Respeta el perfil clínico adjunto: evita harinas refinadas y alubias
    blancas, prioriza cocciones suaves antirreflujo y recuerda la sinergia
    hierro + vitamina C de Marta.
+8. Si un alimento es una variación o preparación de un producto que aparece en
+   el inventario actual (marinado, aliñado, troceado, cocido, congelado, con
+   especias o limón...), devuélvelo con el nombre exacto del inventario en
+   nombre_inventario y explica la variación en notas. Ejemplo: ves "pavo
+   marinado" y en el inventario está "Pechuga de pavo" -> nombre="Pavo
+   marinado", nombre_inventario="Pechuga de pavo", notas="marinado".
+9. Ten en cuenta el contexto que aporte el usuario (por ejemplo "el pavo lo he
+   marinado yo") para emparejar ingredientes con el inventario y para
+   interpretar la foto. Ese contexto manda sobre tu primera impresión.
+10. Nunca cambies el nombre visible del alimento: usa nombre para lo que ves y
+    nombre_inventario solo para indicar con qué producto del inventario se
+    corresponde y descontarlo.
 """.strip()
 
 
@@ -656,13 +681,22 @@ def _numero_positivo(valor) -> float | None:
     return round(numero, 1)
 
 
-def reconocer_ingredientes_encimera(file_upload) -> dict:
+def reconocer_ingredientes_encimera(
+    file_upload,
+    contexto: str = "",
+    nombres_inventario: list[str] | None = None,
+) -> dict:
     """
     Reconoce con Gemini Vision los ingredientes crudos de una foto de encimera.
 
+    `contexto` son aclaraciones del usuario (por ejemplo: "el pavo lo he
+    marinado yo"). `nombres_inventario` son los productos actuales, para que la
+    IA pueda emparejar variaciones (pavo marinado -> pavo) con el inventario.
+
     Devuelve:
       {
-        "ingredientes": [{"nombre", "cantidad_aprox", "gramos_estimados", "es_indivisible"}],
+        "ingredientes": [{"nombre", "cantidad_aprox", "gramos_estimados",
+                          "es_indivisible", "nombre_inventario", "notas"}],
         "descripcion_plato": str,
         "comidas_pareja_estimadas": int,
         "nutricion_por_comida_pareja": {"kcal": ..., ...},
@@ -691,11 +725,36 @@ def reconocer_ingredientes_encimera(file_upload) -> dict:
         contents = [
             SYSTEM_PROMPT_ENCIMERA,
             "# PERFIL CLÍNICO Y NUTRICIONAL (NORMATIVO)\n" + perfil_clinico.strip(),
+        ]
+
+        nombres = [
+            str(nombre).strip()
+            for nombre in (nombres_inventario or [])
+            if str(nombre).strip()
+        ]
+        if nombres:
+            lista_inventario = "\n".join(f"- {nombre}" for nombre in nombres[:150])
+            contents.append(
+                "# INVENTARIO ACTUAL (NOMBRES DE REFERENCIA)\n"
+                "Estos productos son los que hay ahora mismo en la cocina. Si un "
+                "ingrediente de la foto es una variación de alguno de ellos, "
+                "rellena nombre_inventario con el nombre EXACTO de esta lista:\n"
+                + lista_inventario
+            )
+
+        contexto_limpio = str(contexto or "").strip()
+        if contexto_limpio:
+            contents.append(
+                "# CONTEXTO APORTADO POR EL USUARIO (MANDA SOBRE LA IMAGEN)\n"
+                + contexto_limpio[:1000]
+            )
+
+        contents.append(
             types.Part.from_bytes(
                 data=file_upload.getvalue(),
                 mime_type=mime_type or "image/jpeg",
-            ),
-        ]
+            )
+        )
 
         config = types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -714,12 +773,16 @@ def reconocer_ingredientes_encimera(file_upload) -> dict:
         if len(nombre) < 2:
             continue
         cantidad = str(item.get("cantidad_aprox") or "").strip() or "1 unidad"
+        nombre_inventario = str(item.get("nombre_inventario") or "").strip() or None
+        notas = str(item.get("notas") or "").strip() or None
         ingredientes.append(
             {
                 "nombre": nombre,
                 "cantidad_aprox": cantidad,
                 "gramos_estimados": _numero_positivo(item.get("gramos_estimados")),
                 "es_indivisible": bool(item.get("es_indivisible")),
+                "nombre_inventario": nombre_inventario,
+                "notas": notas,
             }
         )
 

@@ -16,6 +16,7 @@ from database import (
     get_inventario,
     get_recetas,
     get_registro_comidas_fecha,
+    mejor_coincidencia_producto,
     update_item_inventario,
     update_receta,
 )
@@ -97,6 +98,8 @@ UNIDADES_CONTABLES = (
 )
 
 RE_CANTIDAD_TEXTO = re.compile(r"^\s*(\d+)\s*(.*)$", re.DOTALL)
+RE_CANTIDAD_NUM = re.compile(r"^\s*(\d+(?:[.,]\d+)?)\s*(.*)$", re.DOTALL)
+UNIDADES_PESO = ("g", "kg", "ml", "l")
 
 
 def _flash(tipo: str, mensaje: str) -> None:
@@ -232,6 +235,63 @@ def descontar_racion(cantidad: str) -> str | None:
     return f"{nuevas} {resto}".strip()
 
 
+def _parsear_cantidad(cantidad) -> tuple[float | None, str]:
+    """Separa '3 comidas de pareja' en (3.0, 'comidas de pareja')."""
+    texto = str(cantidad or "").strip()
+    if not texto:
+        return None, ""
+    match = RE_CANTIDAD_NUM.match(texto)
+    if not match:
+        return None, texto
+    return _numero(match.group(1)), match.group(2).strip()
+
+
+def _formatear_numero(numero: float) -> str:
+    if abs(float(numero) - round(float(numero))) < 1e-6:
+        return str(int(round(float(numero))))
+    return f"{float(numero):.2f}".rstrip("0").rstrip(".")
+
+
+def _es_unidad_peso(resto: str) -> bool:
+    return str(resto or "").strip().lower().startswith(UNIDADES_PESO)
+
+
+def _permite_parcial(item: dict) -> bool:
+    """True si el ítem se puede consumir solo en parte (no indivisible y >1)."""
+    numero, _ = _parsear_cantidad(item.get("cantidad_aprox"))
+    if item.get("es_indivisible"):
+        return False
+    return bool(numero is not None and numero > 1)
+
+
+def _escalar_nutricion(nutricion, factor: float) -> dict:
+    factor = max(0.0, float(factor))
+    resultado: dict = {}
+    for clave, valor in _nutricion_dict(nutricion).items():
+        numero = _numero(valor)
+        if numero <= 0:
+            continue
+        resultado[clave] = round(numero * factor, 2)
+    return resultado
+
+
+def consumir_cantidad(item: dict, cantidad_consumida: float) -> str:
+    """
+    Descuenta una cantidad concreta (puede ser parcial) del ítem y devuelve
+    un texto con el resultado. Si se agota o no es fraccionable, borra el ítem.
+    """
+    numero, resto = _parsear_cantidad(item.get("cantidad_aprox"))
+    if numero is None or cantidad_consumida >= numero or not _permite_parcial(item):
+        delete_item_inventario(item["id"])
+        return "se ha agotado"
+
+    restante = numero - cantidad_consumida
+    resto_nuevo = _singularizar(resto) if abs(restante - 1) < 1e-6 else resto
+    nueva_cantidad = f"{_formatear_numero(restante)} {resto_nuevo}".strip()
+    update_item_inventario(item["id"], {"cantidad_aprox": nueva_cantidad})
+    return f"quedan {nueva_cantidad}"
+
+
 def _repartir_nutricion(nutricion, tipo_reparto: str) -> tuple[dict, dict]:
     nutricion = _nutricion_dict(nutricion)
     factor_g, factor_m = FACTORES_REPARTO.get(
@@ -338,14 +398,29 @@ def _buscar_receta_por_nombre(nombre: str, recetas: list[dict]) -> dict | None:
 def _buscar_item_inventario(
     nombre: str, items: list[dict], excluir: set | None = None
 ) -> dict | None:
+    """
+    Busca el ítem de inventario que corresponde a un nombre. Primero prueba el
+    cruce exacto por palabras y, si no hay, la mejor coincidencia difusa para
+    emparejar variaciones (ej. 'pavo marinado' -> 'Pechuga de pavo').
+    """
     excluir = excluir or set()
+    candidatos: list[tuple[str, str]] = []
+    por_id: dict[str, dict] = {}
     for item in items or []:
-        if str(item.get("id")) in excluir:
+        item_id = str(item.get("id") or "")
+        if not item_id or item_id in excluir:
             continue
         if str(item.get("ubicacion") or "") == "batch_cocinado":
             continue
-        if coincide_producto(nombre, str(item.get("nombre") or "")):
+        nombre_item = str(item.get("nombre") or "")
+        if coincide_producto(nombre, nombre_item):
             return item
+        candidatos.append((item_id, nombre_item))
+        por_id[item_id] = item
+
+    clave, _ = mejor_coincidencia_producto(nombre, candidatos, umbral=0.5)
+    if clave:
+        return por_id.get(clave)
     return None
 
 
@@ -622,6 +697,56 @@ def _render_check_comido(inventario: list[dict], recetas: list[dict]) -> None:
         _, texto, icono = calcular_antiguedad(item.get("fecha_cocinado"))
         st.caption(f"{icono} {texto} · Cocinado: {item.get('fecha_cocinado')}")
 
+    numero_actual, resto_actual = _parsear_cantidad(item.get("cantidad_aprox"))
+    permite_parcial = _permite_parcial(item)
+    es_peso = _es_unidad_peso(resto_actual)
+    cantidad_consumida = numero_actual if numero_actual is not None else 1.0
+
+    if permite_parcial and numero_actual:
+        if es_peso:
+            cantidad_consumida = st.number_input(
+                f"¿Cuánto has consumido? ({resto_actual})",
+                min_value=1.0,
+                max_value=float(numero_actual),
+                value=float(min(100.0, numero_actual)),
+                step=10.0,
+                key=f"check_comido_cantidad_{item_id}_{cantidad_actual}",
+            )
+        else:
+            paso = 0.25 if numero_actual <= 4 else 0.5
+            cantidad_consumida = st.number_input(
+                "¿Cuántas raciones has comido?",
+                min_value=0.25,
+                max_value=float(numero_actual),
+                value=float(min(1.0, numero_actual)),
+                step=float(paso),
+                key=f"check_comido_cantidad_{item_id}_{cantidad_actual}",
+                help=(
+                    "Puedes apuntar media ración o solo una parte. El inventario "
+                    "y los nutrientes se ajustan a lo que realmente has comido."
+                ),
+            )
+        restante_previsto = float(numero_actual) - float(cantidad_consumida)
+        if restante_previsto > 0:
+            st.caption(
+                f"Se descontarán {_formatear_numero(cantidad_consumida)} de "
+                f"{_formatear_numero(numero_actual)}; quedarán "
+                f"{_formatear_numero(restante_previsto)} {resto_actual}."
+            )
+        else:
+            st.caption("Con esta cantidad el ítem se agotará y se borrará.")
+    elif numero_actual is not None and numero_actual > 0:
+        st.caption(
+            "Este ítem se consume entero en una toma (no es fraccionable)."
+        )
+
+    if not permite_parcial:
+        factor_nutricion = 1.0
+    elif es_peso:
+        factor_nutricion = min(1.0, float(cantidad_consumida) / float(numero_actual))
+    else:
+        factor_nutricion = float(cantidad_consumida)
+
     col_fecha, col_momento = st.columns(2)
     with col_fecha:
         fecha_consumo = st.date_input(
@@ -698,9 +823,15 @@ def _render_check_comido(inventario: list[dict], recetas: list[dict]) -> None:
                 {}, f"check_comido_manual_{item_id}"
             )
 
-    if nutricion:
+    nutricion_efectiva = (
+        nutricion
+        if fuente == "manual"
+        else _escalar_nutricion(nutricion, factor_nutricion)
+    )
+
+    if nutricion_efectiva:
         gonzalo_previo, marta_previo = _repartir_nutricion(
-            nutricion, tipo_reparto
+            nutricion_efectiva, tipo_reparto
         )
         col_g, col_m = st.columns(2)
         with col_g:
@@ -712,13 +843,20 @@ def _render_check_comido(inventario: list[dict], recetas: list[dict]) -> None:
             "Esta toma se registrará en el historial sin sumar nutrientes."
         )
 
+    unidad_consumo = resto_actual or "ración"
+    if abs(float(cantidad_consumida) - 1.0) < 1e-6:
+        unidad_consumo = _singularizar(unidad_consumo)
+    texto_consumo = (
+        f"{_formatear_numero(cantidad_consumida)} {unidad_consumo}".strip()
+    )
+
     if st.button(
-        "✅ Registrar comida y descontar 1 ración",
+        f"✅ Registrar comida y descontar {texto_consumo}",
         type="primary",
         width="stretch",
         key=f"check_comido_guardar_{item_id}",
     ):
-        gonzalo, marta = _repartir_nutricion(nutricion, tipo_reparto)
+        gonzalo, marta = _repartir_nutricion(nutricion_efectiva, tipo_reparto)
         registro = {
             "fecha_consumo": fecha_consumo.isoformat(),
             "fecha_cocinado": item.get("fecha_cocinado") or None,
@@ -727,22 +865,24 @@ def _render_check_comido(inventario: list[dict], recetas: list[dict]) -> None:
             if receta_asociada and receta_asociada.get("id")
             else None,
             "tipo_reparto": tipo_reparto,
-            "descripcion": str(item.get("nombre") or "Comida"),
+            "descripcion": (
+                f"{str(item.get('nombre') or 'Comida')} ({texto_consumo})"
+            ),
             "completado": True,
             "nutricion_gonzalo": gonzalo or None,
             "nutricion_marta": marta or None,
         }
         try:
             add_registro_comida(registro)
-            detalle = _consumir_del_inventario(item)
+            detalle = consumir_cantidad(item, float(cantidad_consumida))
         except Exception as exc:
             st.error(f"No se pudo registrar la comida: {exc}")
             return
 
         _flash(
             "success",
-            f"Comida registrada: {item.get('nombre')} ({momento}, "
-            f"{fecha_consumo.isoformat()}). Inventario: {detalle}.",
+            f"Comida registrada: {item.get('nombre')} ({texto_consumo}, "
+            f"{momento}, {fecha_consumo.isoformat()}). Inventario: {detalle}.",
         )
         st.rerun()
 
@@ -764,16 +904,50 @@ def _render_foto_encimera(inventario: list[dict]) -> None:
             "secrets. El resto de funciones de la pantalla siguen operativas."
         )
 
-    foto_camara = st.camera_input(
-        "Foto de la encimera", key="encimera_camara", disabled=not ai_engine.tiene_gemini_key()
-    )
-    foto_archivo = st.file_uploader(
-        "... o sube una foto desde el carrete",
-        type=["jpg", "jpeg", "png", "webp"],
-        key="encimera_archivo",
+    modo_entrada = st.radio(
+        "¿Cómo quieres la foto?",
+        ["🖼️ Subir desde el carrete", "📷 Hacer foto con la cámara"],
+        horizontal=True,
+        key="encimera_modo_entrada",
         disabled=not ai_engine.tiene_gemini_key(),
     )
-    archivo = foto_camara or foto_archivo
+
+    if str(modo_entrada).startswith("📷"):
+        st.caption(
+            "La cámara solo se activa en este modo. Cambia a «Subir desde el "
+            "carrete» para apagarla."
+        )
+        foto_camara = st.camera_input(
+            "Foto de la encimera",
+            key="encimera_camara",
+            disabled=not ai_engine.tiene_gemini_key(),
+        )
+        archivo = foto_camara
+    else:
+        archivo = st.file_uploader(
+            "Sube una foto desde el carrete o el explorador",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="encimera_archivo",
+            disabled=not ai_engine.tiene_gemini_key(),
+        )
+
+    contexto_foto = st.text_input(
+        "Contexto para la IA (opcional)",
+        placeholder="Ej. El pavo lo he marinado yo con limón y especias",
+        key="encimera_contexto",
+        help=(
+            "Cuéntale a la IA cualquier variación que no se vea en la foto: "
+            "marinados, aliños, si algo ya está cocido, etc. Así puede emparejarlo "
+            "con el producto correcto del inventario."
+        ),
+    )
+
+    nombres_inventario = [
+        str(item.get("nombre") or "").strip()
+        for item in inventario or []
+        if str(item.get("ubicacion") or "") != "batch_cocinado"
+        and str(item.get("nombre") or "").strip()
+    ]
 
     col_analizar, col_descartar = st.columns(2)
     with col_analizar:
@@ -800,7 +974,11 @@ def _render_foto_encimera(inventario: list[dict]) -> None:
     if analizar:
         with st.spinner("Reconociendo ingredientes y estimando nutrientes..."):
             try:
-                resultado = ai_engine.reconocer_ingredientes_encimera(archivo)
+                resultado = ai_engine.reconocer_ingredientes_encimera(
+                    archivo,
+                    contexto=contexto_foto,
+                    nombres_inventario=nombres_inventario,
+                )
             except Exception as exc:
                 st.error(str(exc))
             else:
@@ -824,20 +1002,48 @@ def _render_foto_encimera(inventario: list[dict]) -> None:
         "inventa gramos: solo se rellenan si aparecen en el envase."
     )
 
+    opciones_descuento: dict[str, dict] = {}
+    for item in inventario or []:
+        if str(item.get("ubicacion") or "") == "batch_cocinado":
+            continue
+        if not item.get("id"):
+            continue
+        etiqueta = _etiqueta_item(item)
+        base = etiqueta
+        contador = 2
+        while etiqueta in opciones_descuento:
+            etiqueta = f"{base} ({contador})"
+            contador += 1
+        opciones_descuento[etiqueta] = item
+
+    etiqueta_por_id = {
+        str(item.get("id")): etiqueta for etiqueta, item in opciones_descuento.items()
+    }
+    opcion_no_descontar = "🚫 No descontar / no está en inventario"
+    lista_opciones = [opcion_no_descontar] + list(opciones_descuento.keys())
+
     filas = []
     for ingrediente in resultado.get("ingredientes") or []:
-        match = _buscar_item_inventario(
-            str(ingrediente.get("nombre") or ""), inventario
+        nombre_visible = str(ingrediente.get("nombre") or "").strip()
+        nombre_para_cruce = (
+            str(ingrediente.get("nombre_inventario") or "").strip()
+            or nombre_visible
         )
+        match = _buscar_item_inventario(nombre_para_cruce, inventario)
+        etiqueta_match = (
+            etiqueta_por_id.get(str(match.get("id")), opcion_no_descontar)
+            if match
+            else opcion_no_descontar
+        )
+        notas = str(ingrediente.get("notas") or "").strip()
         filas.append(
             {
                 "Descontar": True,
-                "Ingrediente": ingrediente.get("nombre"),
+                "Ingrediente": nombre_visible,
+                "Notas IA": notas,
                 "Cantidad": ingrediente.get("cantidad_aprox") or "1 unidad",
                 "Gramos (si visibles)": ingrediente.get("gramos_estimados"),
-                "Inventario detectado": match.get("nombre")
-                if match
-                else "No está en inventario",
+                "Descontar de inventario": etiqueta_match,
             }
         )
 
@@ -847,15 +1053,31 @@ def _render_foto_encimera(inventario: list[dict]) -> None:
         width="stretch",
         disabled=[
             "Ingrediente",
+            "Notas IA",
             "Cantidad",
             "Gramos (si visibles)",
-            "Inventario detectado",
         ],
         column_config={
             "Descontar": st.column_config.CheckboxColumn("Descontar"),
+            "Descontar de inventario": st.column_config.SelectboxColumn(
+                "Descontar de inventario",
+                options=lista_opciones,
+                required=True,
+                default=opcion_no_descontar,
+                help=(
+                    "Puedes cambiar a mano con qué producto del inventario se "
+                    "corresponde (útil si la IA no reconoce una variación)."
+                ),
+            ),
         },
         key=f"editor_encimera{sufijo}",
     )
+
+    if not opciones_descuento:
+        st.info(
+            "No hay productos en nevera, congelador ni despensa para descontar. "
+            "Puedes registrar el análisis como comida o batch igualmente."
+        )
 
     modo = st.selectbox(
         "¿Qué hacemos con lo cocinado?",
@@ -963,9 +1185,15 @@ def _render_foto_encimera(inventario: list[dict]) -> None:
                 if not bool(fila.get("Descontar")):
                     continue
                 nombre = str(fila.get("Ingrediente") or "").strip()
-                item = _buscar_item_inventario(nombre, inventario, usados)
+                etiqueta_elegida = str(
+                    fila.get("Descontar de inventario") or ""
+                ).strip()
+                item = opciones_descuento.get(etiqueta_elegida)
                 if not item:
                     no_encontrados.append(nombre)
+                    continue
+                if str(item.get("id")) in usados:
+                    no_encontrados.append(f"{nombre} (ya descontado)")
                     continue
                 usados.add(str(item.get("id")))
                 detalle = _consumir_del_inventario(item)
