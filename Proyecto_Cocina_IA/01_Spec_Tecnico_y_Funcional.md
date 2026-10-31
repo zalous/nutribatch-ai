@@ -1,6 +1,6 @@
 ---
 documento: Spec Técnico y Funcional
-version: 1.8
+version: 1.9
 stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
 ---
 # Especificacion Tecnica y Funcional
