@@ -573,6 +573,21 @@ def get_registro_comidas_recientes(limite: int = 25):
     return response.data or []
 
 
+def get_registro_comidas_rango(fecha_inicio: str, fecha_fin: str):
+    """Obtiene las comidas registradas entre dos fechas (YYYY-MM-DD), ambas incluidas."""
+    supabase = get_supabase_client()
+    response = (
+        supabase.table("registro_comidas")
+        .select("*")
+        .gte("fecha_consumo", fecha_inicio)
+        .lte("fecha_consumo", fecha_fin)
+        .order("fecha_consumo")
+        .order("created_at")
+        .execute()
+    )
+    return response.data or []
+
+
 def add_registro_comida(registro_data: dict):
     """Inserta una comida consumida en el historial nutricional."""
     supabase = get_supabase_client()

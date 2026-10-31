@@ -4,7 +4,7 @@ import os
 import re
 import time
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import streamlit as st
@@ -96,6 +96,32 @@ class ResultadoEncimera(BaseModel):
     nutricion_por_comida_pareja: NutricionEncimera
 
 
+class IngredienteRescate(BaseModel):
+    nombre: str = Field(description="Alimento o producto, con nombre claro")
+    cantidad: str = Field(default="", description="Cantidad lógica: '2 unidades', '1 bandeja', '300 g'. Nunca se inventa un peso que no conste")
+    del_inventario: bool = Field(default=False, description="True si ya está en nevera, congelador o despensa")
+    ubicacion_sugerida: str = Field(default="lista_compra", description="'nevera', 'congelador', 'despensa', 'batch_cocinado' o 'lista_compra'")
+
+
+class RecetaRescate(BaseModel):
+    titulo: str = Field(description="Título corto y apetecible de la receta de rescate")
+    porque_rescate: str = Field(description="Por qué esta receta encaja ahora: qué sobras gasta y qué hueco cubre")
+    momento_recomendado: str = Field(default="comida", description="desayuno, comida, merienda, cena o snack")
+    comidas_pareja_por_olla: int = Field(default=1, description="Cuántas comidas de pareja salen de la elaboración")
+    ingredientes: list[IngredienteRescate]
+    pasos_preparacion: str = Field(description="Pasos claros y realistas, en texto plano numerado")
+    guia_emplatado: str = Field(description="Cómo repartir en tápers y servir 55% Gonzalo / 45% Marta")
+    usa_sobras: list[str] = Field(default_factory=list, description="Nombres de tápers o productos que se gastan")
+    cubre_huecos: list[str] = Field(default_factory=list, description="Macros o micronutrientes de la semana que ayuda a cubrir")
+    aviso_clinico: str | None = Field(default=None, description="Aviso clínico breve si aplica (hierro + vitamina C, antirreflujo, LDL...)")
+    nutricion_por_comida_pareja: NutricionEncimera
+
+
+class ResultadoRescate(BaseModel):
+    resumen_situacion: str = Field(description="Diagnóstico breve de las sobras urgentes y los huecos de la semana")
+    recetas: list[RecetaRescate]
+
+
 SYSTEM_PROMPT_TICKETS = """
 Eres un experto lector de tickets de supermercados españoles (Mercadona, Lidl, Consum, Dia, Carrefour, Alcampo...).
 Analiza la imagen, PDF o texto del ticket y extrae SOLO los productos realmente comprados.
@@ -159,6 +185,41 @@ Reglas estrictas:
     corresponde y descontarlo.
 11. Solo deja nombre_inventario en null si de verdad no hay ningún producto del
     inventario relacionado con ese alimento.
+""".strip()
+
+
+SYSTEM_PROMPT_RESCATE = """
+Eres el chef de Batch Cooking y nutricionista clínico de Gonzalo y Marta.
+Es mitad de semana (miércoles o jueves) y hay que cerrar la semana sin tirar
+comida y sin romper el déficit ni las reglas clínicas.
+
+Diseña recetas de rescate realistas, rápidas y aptas para cocinar desde el móvil.
+Reglas estrictas:
+1. PRIORIDAD DE SOBRAS: gasta primero los tápers cocinados que llevan más días
+   (los de prioridad roja), después los de la nevera y por último el congelador.
+   Usa el inventario disponible como base; no propongas comprar lo que ya hay.
+2. HUECOS NUTRICIONALES: el contexto incluye los huecos de macros, vitaminas y
+   minerales de la semana. Orienta las recetas a cubrir los mayores huecos
+   (proteína, fibra, hierro, vitamina C, vitamina D, calcio...) y evita sumar
+   más grasas saturadas o azúcares si ya están por encima del tope.
+3. RESPETA EL PERFIL CLÍNICO adjunto: nada de harinas refinadas ni alubias
+   blancas; control de LDL y ácido úrico de Gonzalo; cenas antirreflujo para
+   Marta; combina siempre el hierro con vitamina C y evita lácteos o café en esa
+   misma comida.
+4. NO INVENTES EXISTENCIAS: si un ingrediente no está en el inventario, pon
+   del_inventario=false y ubicacion_sugerida='lista_compra'. Solo los productos
+   que aparezcan en el inventario pueden llevar del_inventario=true.
+5. NO INVENTES PESOS: usa cantidades lógicas ('2 unidades', '1 bandeja',
+   '1 puñado') y gramos solo si el inventario ya los indica.
+6. Cada receta debe indicar cuántas comidas de pareja salen, cómo repartirlas
+   en tápers y la guía 55% Gonzalo / 45% Marta.
+7. Estima la nutrición de UNA comida de pareja (los dos juntos) de forma
+   redondeada. Si un micronutriente no se puede justificar, déjalo en 0.
+8. Si la semana tiene pocos registros de comidas, dilo en resumen_situacion y
+   trata los huecos como orientativos, nunca como una verdad absoluta.
+9. Devuelve entre 1 y 3 recetas, ordenadas de más urgente a menos urgente.
+10. Si una preparación es para cena, que sea ligera y antirreflujo; si es para
+    comida, puede llevar más tomate y legumbres.
 """.strip()
 
 
@@ -673,6 +734,63 @@ CLAVES_NUTRICION = (
     "vitamina_d_ug",
 )
 
+# Objetivos diarios (punto medio de los rangos del perfil clínico).
+OBJETIVOS_NUTRICIONALES_DIARIOS = {
+    "gonzalo": {
+        "kcal": 1700.0,
+        "proteinas_g": 155.0,
+        "carbohidratos_g": 122.0,
+        "grasas_g": 57.0,
+        "grasas_saturadas_g": 13.0,
+        "fibra_g": 33.0,
+        "azucares_g": 15.0,
+        "hierro_mg": 13.0,
+        "vitamina_c_mg": 100.0,
+        "calcio_mg": 1000.0,
+        "vitamina_d_ug": 17.5,
+    },
+    "marta": {
+        "kcal": 1375.0,
+        "proteinas_g": 115.0,
+        "carbohidratos_g": 107.0,
+        "grasas_g": 47.5,
+        "grasas_saturadas_g": 10.0,
+        "fibra_g": 26.5,
+        "azucares_g": 15.0,
+        "hierro_mg": 20.0,
+        "vitamina_c_mg": 100.0,
+        "calcio_mg": 1000.0,
+        "vitamina_d_ug": 17.5,
+    },
+}
+
+# Nutrientes que son un tope máximo, no un objetivo a alcanzar.
+NUTRIENTES_TOPE = {"grasas_saturadas_g", "azucares_g"}
+
+ETIQUETAS_NUTRIENTES = {
+    "kcal": ("Calorías", "kcal"),
+    "proteinas_g": ("Proteínas", "g"),
+    "carbohidratos_g": ("Carbohidratos", "g"),
+    "grasas_g": ("Grasas totales", "g"),
+    "grasas_saturadas_g": ("Grasas saturadas", "g"),
+    "fibra_g": ("Fibra", "g"),
+    "azucares_g": ("Azúcares libres", "g"),
+    "hierro_mg": ("Hierro", "mg"),
+    "vitamina_c_mg": ("Vitamina C", "mg"),
+    "calcio_mg": ("Calcio", "mg"),
+    "vitamina_d_ug": ("Vitamina D", "µg"),
+}
+
+DIAS_SEMANA_ES = (
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+    "domingo",
+)
+
 
 def _numero_positivo(valor) -> float | None:
     """Convierte a float y descarta ceros, negativos y valores no numéricos."""
@@ -1159,6 +1277,377 @@ def construir_contexto_vivo(
         "lista_compra": lista_compra,
         "errores": errores,
         "texto": "\n\n".join(bloques),
+    }
+
+
+# =============================================================================
+# RECETAS DE RESCATE (MIÉRCOLES / JUEVES)
+# =============================================================================
+def _sumar_nutricion(acumulado: dict, nutricion) -> None:
+    if isinstance(nutricion, str):
+        try:
+            nutricion = json.loads(nutricion)
+        except (TypeError, ValueError):
+            return
+    if not isinstance(nutricion, dict):
+        return
+    for clave in CLAVES_NUTRICION:
+        valor = _numero_positivo(nutricion.get(clave))
+        if valor is not None:
+            acumulado[clave] = round(acumulado.get(clave, 0.0) + valor, 2)
+
+
+def resumir_nutricion_semanal(registros: list[dict], fecha_referencia=None) -> dict:
+    """
+    Suma la nutrición de Gonzalo y Marta de la semana en curso (lunes a la fecha
+    de referencia) y calcula, por persona y nutriente, el objetivo proporcional
+    a los días transcurridos, el hueco pendiente o el exceso sobre el tope.
+    """
+    referencia = _parsear_fecha(fecha_referencia) or date.today()
+    inicio = referencia - timedelta(days=referencia.weekday())
+    dias = max(1, (referencia - inicio).days + 1)
+
+    totales = {"gonzalo": {}, "marta": {}}
+    comidas = 0
+    for registro in registros or []:
+        if not isinstance(registro, dict):
+            continue
+        fecha = _parsear_fecha(registro.get("fecha_consumo"))
+        if fecha is not None and (fecha < inicio or fecha > referencia):
+            continue
+        comidas += 1
+        _sumar_nutricion(totales["gonzalo"], registro.get("nutricion_gonzalo"))
+        _sumar_nutricion(totales["marta"], registro.get("nutricion_marta"))
+
+    personas: dict = {}
+    for persona, objetivos in OBJETIVOS_NUTRICIONALES_DIARIOS.items():
+        detalle: dict = {}
+        for clave, objetivo_diario in objetivos.items():
+            objetivo = round(float(objetivo_diario) * dias, 1)
+            total = round(totales[persona].get(clave, 0.0), 1)
+            es_tope = clave in NUTRIENTES_TOPE
+            if es_tope:
+                hueco = 0.0
+                exceso = max(0.0, round(total - objetivo, 1))
+            else:
+                hueco = max(0.0, round(objetivo - total, 1))
+                exceso = 0.0
+            porcentaje = round((total / objetivo * 100) if objetivo else 0.0, 1)
+            detalle[clave] = {
+                "total": total,
+                "objetivo": objetivo,
+                "hueco": hueco,
+                "exceso": exceso,
+                "porcentaje": porcentaje,
+                "es_tope": es_tope,
+            }
+        personas[persona] = detalle
+
+    return {
+        "fecha_inicio": inicio.isoformat(),
+        "fecha_fin": referencia.isoformat(),
+        "dia_fin": DIAS_SEMANA_ES[referencia.weekday()],
+        "dias_transcurridos": dias,
+        "dias_restantes": max(0, 7 - dias),
+        "comidas_registradas": comidas,
+        "personas": personas,
+    }
+
+
+def _formatear_numero_nutriente(valor: float) -> str:
+    if abs(float(valor) - round(float(valor))) < 0.05:
+        return str(int(round(float(valor))))
+    return f"{float(valor):.1f}".replace(".", ",")
+
+
+def _formatear_resumen_nutricional(resumen: dict, maximo_huecos: int = 6) -> str:
+    if not resumen:
+        return "SEMANA NUTRICIONAL: sin datos suficientes."
+
+    personas = resumen.get("personas") or {}
+    lineas = [
+        "SEMANA NUTRICIONAL (lunes {inicio} a {dia} {fin}; {dias} de 7 días, "
+        "faltan {restantes}): {comidas} comida(s) registrada(s).".format(
+            inicio=resumen.get("fecha_inicio", ""),
+            dia=resumen.get("dia_fin", ""),
+            fin=resumen.get("fecha_fin", ""),
+            dias=resumen.get("dias_transcurridos", 0),
+            restantes=resumen.get("dias_restantes", 0),
+            comidas=resumen.get("comidas_registradas", 0),
+        )
+    ]
+
+    for persona, etiqueta in (("gonzalo", "Gonzalo"), ("marta", "Marta")):
+        detalle = personas.get(persona) or {}
+        huecos = [
+            (clave, datos)
+            for clave, datos in detalle.items()
+            if not datos.get("es_tope") and datos.get("hueco", 0) > 0
+        ]
+        huecos.sort(
+            key=lambda par: (
+                par[1]["hueco"] / par[1]["objetivo"] if par[1]["objetivo"] else 0
+            ),
+            reverse=True,
+        )
+        excesos = [
+            (clave, datos)
+            for clave, datos in detalle.items()
+            if datos.get("es_tope") and datos.get("exceso", 0) > 0
+        ]
+
+        partes = []
+        if huecos:
+            textos = []
+            for clave, datos in huecos[:maximo_huecos]:
+                nombre, unidad = ETIQUETAS_NUTRIENTES.get(clave, (clave, ""))
+                textos.append(
+                    f"{nombre}: faltan {_formatear_numero_nutriente(datos['hueco'])} "
+                    f"{unidad} (lleva {datos['porcentaje']:.0f}% del objetivo)"
+                )
+            partes.append("Huecos -> " + "; ".join(textos))
+        if excesos:
+            textos = []
+            for clave, datos in excesos:
+                nombre, unidad = ETIQUETAS_NUTRIENTES.get(clave, (clave, ""))
+                textos.append(
+                    f"{nombre}: +{_formatear_numero_nutriente(datos['exceso'])} "
+                    f"{unidad} sobre el tope"
+                )
+            partes.append("Excesos -> " + "; ".join(textos))
+        if not partes:
+            partes.append("Sin huecos relevantes registrados.")
+        lineas.append(f"- {etiqueta}: " + " | ".join(partes))
+
+    return "\n".join(lineas)
+
+
+def _lista_textos(valor) -> list[str]:
+    if isinstance(valor, str):
+        texto = valor.strip()
+        return [texto] if texto else []
+    if isinstance(valor, (list, tuple)):
+        return [str(item).strip() for item in valor if str(item).strip()]
+    return []
+
+
+def _inventario_tiene_producto(nombre: str, inventario: list[dict]) -> bool:
+    nombre = str(nombre or "").strip()
+    if len(nombre) < 2:
+        return False
+
+    candidatos = []
+    for item in inventario or []:
+        nombre_item = str(item.get("nombre") or "").strip()
+        if nombre_item:
+            candidatos.append((str(item.get("id") or nombre_item), nombre_item))
+    if not candidatos:
+        return False
+
+    try:
+        import database
+
+        clave, _ = database.mejor_coincidencia_producto(
+            nombre, candidatos, umbral=0.55
+        )
+        if clave:
+            return True
+    except Exception:
+        pass
+
+    consulta = _normalizar(nombre)
+    for _, nombre_item in candidatos:
+        if consulta and consulta in _normalizar(nombre_item):
+            return True
+    return False
+
+
+def _normalizar_receta_rescate(datos: dict, inventario: list[dict]) -> dict | None:
+    if not isinstance(datos, dict):
+        return None
+
+    titulo = str(datos.get("titulo") or "").strip()
+    if len(titulo) < 3:
+        return None
+
+    ingredientes = []
+    for ingrediente in datos.get("ingredientes") or []:
+        if not isinstance(ingrediente, dict):
+            continue
+        nombre = str(ingrediente.get("nombre") or "").strip()
+        if len(nombre) < 2:
+            continue
+        del_inventario = _inventario_tiene_producto(nombre, inventario)
+        ubicacion = str(ingrediente.get("ubicacion_sugerida") or "").strip().lower()
+        if ubicacion not in {
+            "nevera",
+            "congelador",
+            "despensa",
+            "batch_cocinado",
+            "lista_compra",
+        }:
+            ubicacion = "nevera" if del_inventario else "lista_compra"
+        ingredientes.append(
+            {
+                "nombre": nombre,
+                "cantidad": str(ingrediente.get("cantidad") or "").strip(),
+                "del_inventario": del_inventario,
+                "ubicacion_sugerida": ubicacion,
+            }
+        )
+
+    if not ingredientes:
+        return None
+
+    try:
+        comidas = int(datos.get("comidas_pareja_por_olla") or 1)
+    except (TypeError, ValueError):
+        comidas = 1
+    comidas = max(1, min(20, comidas))
+
+    nutricion_cruda = datos.get("nutricion_por_comida_pareja") or {}
+    nutricion = {}
+    for clave in CLAVES_NUTRICION:
+        valor = _numero_positivo(nutricion_cruda.get(clave))
+        if valor is not None:
+            nutricion[clave] = valor
+
+    momento = str(datos.get("momento_recomendado") or "comida").strip().lower()
+    if momento not in {"desayuno", "comida", "merienda", "cena", "snack"}:
+        momento = "comida"
+
+    return {
+        "titulo": titulo,
+        "porque_rescate": str(datos.get("porque_rescate") or "").strip(),
+        "momento_recomendado": momento,
+        "comidas_pareja_por_olla": comidas,
+        "ingredientes": ingredientes,
+        "pasos_preparacion": str(datos.get("pasos_preparacion") or "").strip(),
+        "guia_emplatado": str(datos.get("guia_emplatado") or "").strip(),
+        "usa_sobras": _lista_textos(datos.get("usa_sobras")),
+        "cubre_huecos": _lista_textos(datos.get("cubre_huecos")),
+        "aviso_clinico": str(datos.get("aviso_clinico") or "").strip() or None,
+        "nutricion_por_comida_pareja": nutricion,
+    }
+
+
+def proponer_recetas_rescate(
+    inventario: list[dict],
+    registros_semana: list[dict] | None = None,
+    resumen_semanal: dict | None = None,
+    contexto: str = "",
+    max_recetas: int = 3,
+) -> dict:
+    """
+    Analiza las sobras (nevera, congelador y tápers por antigüedad) y los huecos
+    nutricionales de la semana para proponer recetas de rescate con Gemini.
+
+    Devuelve:
+      {
+        "resumen_situacion": str,
+        "recetas": [{"titulo", "porque_rescate", "momento_recomendado",
+                     "comidas_pareja_por_olla", "ingredientes",
+                     "pasos_preparacion", "guia_emplatado", "usa_sobras",
+                     "cubre_huecos", "aviso_clinico",
+                     "nutricion_por_comida_pareja"}],
+        "resumen_semanal": dict,
+      }
+    Lanza RuntimeError si falta la clave, falla Gemini o no propone nada.
+    """
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        raise RuntimeError(
+            "Falta GEMINI_API_KEY. Configúrala en .streamlit/secrets.toml "
+            "o en los Secrets de Streamlit Cloud para proponer recetas de rescate."
+        )
+
+    inventario = list(inventario or [])
+    try:
+        maximo = max(1, min(4, int(max_recetas)))
+    except (TypeError, ValueError):
+        maximo = 3
+
+    tapers = [
+        item
+        for item in inventario
+        if str(item.get("ubicacion") or "").strip().lower() == "batch_cocinado"
+    ]
+    inventario_sin_tapers = [
+        item
+        for item in inventario
+        if str(item.get("ubicacion") or "").strip().lower() != "batch_cocinado"
+    ]
+
+    resumen = resumen_semanal or resumir_nutricion_semanal(registros_semana or [])
+    hoy = date.today()
+    perfil_clinico = cargar_perfil_clinico()
+
+    bloques = [
+        SYSTEM_PROMPT_RESCATE,
+        "# PERFIL CLÍNICO Y NUTRICIONAL (NORMATIVO)\n" + perfil_clinico.strip(),
+        (
+            "# FECHA\nHoy es {dia} {fecha}. Semana del {inicio} al {fin}.".format(
+                dia=DIAS_SEMANA_ES[hoy.weekday()],
+                fecha=hoy.isoformat(),
+                inicio=resumen.get("fecha_inicio", ""),
+                fin=resumen.get("fecha_fin", ""),
+            )
+        ),
+        "# INVENTARIO DISPONIBLE\n" + _formatear_inventario(inventario_sin_tapers),
+        "# TÁPERS COCINADOS Y SU ANTIGÜEDAD\n" + _formatear_tapers(tapers),
+        "# HUECOS NUTRICIONALES DE LA SEMANA\n"
+        + _formatear_resumen_nutricional(resumen),
+    ]
+
+    contexto_limpio = str(contexto or "").strip()
+    if contexto_limpio:
+        bloques.append(
+            "# CONTEXTO APORTADO POR EL USUARIO (MANDA SOBRE LA ESTIMACIÓN)\n"
+            + contexto_limpio[:1000]
+        )
+
+    bloques.append(
+        "# ENCARGO\n"
+        f"Propón como máximo {maximo} receta(s) de rescate, ordenadas de más "
+        "urgente a menos urgente. Gasta primero los tápers más antiguos y usa "
+        "lo que ya hay. Marca como lista_compra solo lo que falte de verdad. "
+        "Indica en resumen_situacion qué sobras hay que salvar y qué huecos "
+        "principales cubre la propuesta."
+    )
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=gemini_key)
+        config = types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=ResultadoRescate,
+            temperature=0.4,
+        )
+        response = _generar_con_fallback(client, ["\n\n".join(bloques)], config)
+        data = json.loads(response.text)
+    except Exception as exc:
+        raise RuntimeError(
+            f"No se pudieron proponer recetas de rescate: {str(exc)[:300]}"
+        ) from exc
+
+    recetas = []
+    for receta in data.get("recetas") or []:
+        normalizada = _normalizar_receta_rescate(receta, inventario)
+        if normalizada:
+            recetas.append(normalizada)
+
+    if not recetas:
+        raise RuntimeError(
+            "La IA no ha devuelto ninguna receta de rescate válida. "
+            "Añade más inventario o inténtalo de nuevo."
+        )
+
+    return {
+        "resumen_situacion": str(data.get("resumen_situacion") or "").strip(),
+        "recetas": recetas[:maximo],
+        "resumen_semanal": resumen,
     }
 
 
