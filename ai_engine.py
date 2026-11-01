@@ -122,6 +122,82 @@ class ResultadoRescate(BaseModel):
     recetas: list[RecetaRescate]
 
 
+class ItemCompraAsistente(BaseModel):
+    item: str = Field(description="Producto a apuntar, con la cantidad si el usuario la ha dicho (ej. 'Leche entera 1 L')")
+    categoria: str = Field(
+        default="despensa",
+        description="'frescos', 'despensa', 'congelados' u 'hogar_y_otros'",
+    )
+
+
+class RespuestaAsistenteAccion(BaseModel):
+    transcripcion: str = Field(
+        default="",
+        description="Transcripción literal del audio del usuario. Vacío si la entrada fue texto.",
+    )
+    respuesta: str = Field(
+        description="Respuesta breve, clara y útil para el usuario, en español y con el perfil clínico aplicado."
+    )
+    intencion: str = Field(
+        default="consulta",
+        description=(
+            "'consulta' si solo pregunta o pide ideas; 'anadir_lista_compra' si pide "
+            "apuntar productos; 'consumir_inventario' si dice que un alimento o táper "
+            "ya se ha consumido o se ha tirado (sin registrar nutrición); "
+            "'check_comido' si pide registrar una comida y sumar nutrientes."
+        ),
+    )
+    items_lista_compra: list[ItemCompraAsistente] = Field(
+        default_factory=list,
+        description="Solo para 'anadir_lista_compra': todos los productos mencionados.",
+    )
+    objetivo_inventario: str | None = Field(
+        default=None,
+        description=(
+            "Solo para consumir o check_comido: nombre EXACTO del producto del "
+            "inventario o título de la receta implicada. Null si no se puede identificar."
+        ),
+    )
+    cantidad_consumida: float | None = Field(
+        default=None,
+        description=(
+            "Cantidad exacta consumida SOLO si el usuario la dice (ej. 1, 0.5, 200). "
+            "Null para consumir una ración por defecto. Nunca se inventa."
+        ),
+    )
+    unidad_consumida: str | None = Field(
+        default=None,
+        description="Unidad de la cantidad consumida: 'comida de pareja', 'ración', 'g', 'unidad'...",
+    )
+    momento: str = Field(
+        default="comida",
+        description="desayuno, comida, merienda, cena o snack. Solo para check_comido.",
+    )
+    fecha_consumo: str | None = Field(
+        default=None,
+        description="Fecha YYYY-MM-DD si el usuario la menciona; null para usar hoy.",
+    )
+    tipo_reparto: str = Field(
+        default="estandar_55_45",
+        description=(
+            "'estandar_55_45', 'mitad_50_50', 'solo_gonzalo' o 'solo_marta'. "
+            "Usa 55/45 salvo que el usuario indique otra cosa."
+        ),
+    )
+    receta_titulo: str | None = Field(
+        default=None,
+        description="Título de la receta asociada, si el usuario la menciona o el táper se reconoce.",
+    )
+    descripcion_registro: str | None = Field(
+        default=None,
+        description="Descripción breve para el historial de comidas, incluyendo la cantidad consumida.",
+    )
+    aclaracion: str | None = Field(
+        default=None,
+        description="Duda o ambigüedad que impide ejecutar la acción con seguridad.",
+    )
+
+
 SYSTEM_PROMPT_TICKETS = """
 Eres un experto lector de tickets de supermercados españoles (Mercadona, Lidl, Consum, Dia, Carrefour, Alcampo...).
 Analiza la imagen, PDF o texto del ticket y extrae SOLO los productos realmente comprados.
@@ -220,6 +296,58 @@ Reglas estrictas:
 9. Devuelve entre 1 y 3 recetas, ordenadas de más urgente a menos urgente.
 10. Si una preparación es para cena, que sea ligera y antirreflujo; si es para
     comida, puede llevar más tomate y legumbres.
+""".strip()
+
+
+SYSTEM_PROMPT_ACCIONES = """
+Eres el asistente por voz y chat de NutriBatch AI para Gonzalo y Marta. Tienes el
+perfil clínico y el estado vivo de Supabase (inventario, tápers, historial y
+lista de la compra). Tu trabajo es conversar y, cuando el usuario lo pida de
+forma explícita, preparar UNA acción para que la app la ejecute.
+
+Distingue con cuidado entre CONSULTAR y ACTUAR:
+- CONSULTA (intencion='consulta'): preguntas, ideas de recetas, "¿qué ceno hoy?",
+  "¿qué día cocinamos las lentejas?", "¿qué hay en la nevera?", "dame una cena
+  antirreflujo". Responde usando el contexto y el perfil clínico. No propongas
+  acciones si no te las piden.
+- ACTUAR: solo si el usuario usa un imperativo claro ("apunta", "añade a la
+  compra", "marca como comido", "ya nos hemos comido", "se ha gastado",
+  "tira el táper", "registra que hemos comido...").
+
+Reglas de acción:
+1. LISTA DE LA COMPRA (intencion='anadir_lista_compra'): rellena
+   items_lista_compra con TODOS los productos mencionados, conservando la
+   cantidad si la dice el usuario. Clasifica cada uno como 'frescos',
+   'despensa', 'congelados' u 'hogar_y_otros'. No inventes cantidades ni
+   productos que no se hayan dicho.
+2. CONSUMIR INVENTARIO (intencion='consumir_inventario'): úsalo cuando diga que
+   un alimento o táper ya se ha consumido, gastado o tirado, sin pedir registrar
+   la comida. Rellena objetivo_inventario con el nombre EXACTO del producto del
+   inventario. Si hay varios candidatos o ninguno claro, deja
+   intencion='consulta', explica la duda en respuesta y rellena aclaracion.
+3. CHECK COMIDO (intencion='check_comido'): úsalo cuando pida registrar una
+   comida o marcar una receta/táper como comido. Además de descontar del
+   inventario, la app sumará los nutrientes del día. Rellena objetivo_inventario
+   (producto o título de receta), momento, tipo_reparto, fecha_consumo si la
+   menciona y descripcion_registro.
+4. CANTIDADES: rellena cantidad_consumida y unidad_consumida SOLO si el usuario
+   las dice ("media ración", "200 g", "una comida de pareja"). Si no las dice,
+   déjalas en null: la app consumirá una ración por defecto. NUNCA inventes
+   gramos ni raciones.
+5. FECHAS: usa fecha_consumo solo si el usuario dice un día concreto ("ayer",
+   "el lunes", "el 3 de noviembre"); conviértela a YYYY-MM-DD usando la fecha de
+   hoy del contexto. Si no, déjala en null (la app usará hoy).
+6. REPARTO: usa 'estandar_55_45' por defecto. Cambia a 'mitad_50_50' si son
+   piezas iguales, o a 'solo_gonzalo'/'solo_marta' si lo indica.
+7. NUTRICIÓN: no inventes nutrientes. La app los tomará del táper, de la receta
+   o los dejará vacíos si no constan.
+8. No afirmes que la acción ya está hecha: redacta respuesta explicando lo que
+   vas a hacer o la respuesta a la consulta. La app ejecutará la acción y
+   mostrará el resultado real.
+9. Si falta un dato imprescindible, no actúes: intencion='consulta', pregunta de
+   forma breve y rellena aclaracion.
+10. Respeta siempre el perfil clínico: déficit, reparto 55/45, hierro +
+    vitamina C de Marta, LDL/ácido úrico de Gonzalo y cenas antirreflujo.
 """.strip()
 
 
@@ -1750,3 +1878,209 @@ def consultar_asistente(
     if not texto:
         raise RuntimeError("Gemini devolvió una respuesta vacía. Inténtalo de nuevo.")
     return texto
+
+
+# =============================================================================
+# ASISTENTE POR VOZ Y CHAT CON ACCIONES (PASO 4.3)
+# =============================================================================
+INTENCIONES_ASISTENTE = {
+    "consulta",
+    "anadir_lista_compra",
+    "consumir_inventario",
+    "check_comido",
+}
+
+CATEGORIAS_COMPRA_ASISTENTE = {
+    "frescos",
+    "despensa",
+    "congelados",
+    "hogar_y_otros",
+}
+
+MOMENTOS_ASISTENTE = {"desayuno", "comida", "merienda", "cena", "snack"}
+
+REPARTOS_ASISTENTE = {
+    "estandar_55_45",
+    "mitad_50_50",
+    "solo_gonzalo",
+    "solo_marta",
+}
+
+
+def _normalizar_respuesta_accion(
+    data: dict,
+    texto_original: str = "",
+    es_audio: bool = False,
+) -> dict:
+    """Sanea la respuesta estructurada del asistente antes de tocar la base de datos."""
+    if not isinstance(data, dict):
+        data = {}
+
+    def _cantidad_positiva(valor) -> float | None:
+        try:
+            numero = float(valor)
+        except (TypeError, ValueError):
+            return None
+        if numero <= 0:
+            return None
+        return round(numero, 2)
+
+    intencion = str(data.get("intencion") or "consulta").strip().lower()
+    if intencion not in INTENCIONES_ASISTENTE:
+        intencion = "consulta"
+
+    items: list[dict] = []
+    for item in data.get("items_lista_compra") or []:
+        if isinstance(item, dict):
+            nombre = str(item.get("item") or "").strip()
+            categoria = str(item.get("categoria") or "").strip().lower()
+        else:
+            nombre = str(item or "").strip()
+            categoria = "despensa"
+        if len(nombre) < 2:
+            continue
+        if categoria not in CATEGORIAS_COMPRA_ASISTENTE:
+            categoria = "despensa"
+        items.append({"item": nombre, "categoria": categoria})
+
+    if intencion == "anadir_lista_compra" and not items:
+        intencion = "consulta"
+
+    objetivo = str(data.get("objetivo_inventario") or "").strip() or None
+    if intencion in {"consumir_inventario", "check_comido"} and not objetivo:
+        intencion = "consulta"
+
+    unidad = str(data.get("unidad_consumida") or "").strip().lower() or None
+
+    momento = str(data.get("momento") or "comida").strip().lower()
+    if momento not in MOMENTOS_ASISTENTE:
+        momento = "comida"
+
+    tipo_reparto = str(data.get("tipo_reparto") or "").strip().lower()
+    if tipo_reparto not in REPARTOS_ASISTENTE:
+        tipo_reparto = "estandar_55_45"
+
+    fecha = _parsear_fecha(data.get("fecha_consumo"))
+    fecha_iso = fecha.isoformat() if fecha else None
+
+    aclaracion = str(data.get("aclaracion") or "").strip() or None
+    if aclaracion:
+        intencion = "consulta"
+
+    transcripcion = str(data.get("transcripcion") or "").strip()
+    if es_audio:
+        if not transcripcion:
+            transcripcion = ""
+    else:
+        transcripcion = str(texto_original or "").strip() or transcripcion
+
+    respuesta = str(data.get("respuesta") or "").strip()
+    if not respuesta:
+        respuesta = (
+            "No he podido interpretar la petición con seguridad. "
+            "¿Puedes repetirla o dar más detalle?"
+        )
+
+    return {
+        "transcripcion": transcripcion,
+        "respuesta": respuesta,
+        "intencion": intencion,
+        "items_lista_compra": items,
+        "objetivo_inventario": objetivo,
+        "cantidad_consumida": _cantidad_positiva(data.get("cantidad_consumida")),
+        "unidad_consumida": unidad,
+        "momento": momento,
+        "fecha_consumo": fecha_iso,
+        "tipo_reparto": tipo_reparto,
+        "receta_titulo": str(data.get("receta_titulo") or "").strip() or None,
+        "descripcion_registro": str(data.get("descripcion_registro") or "").strip()
+        or None,
+        "aclaracion": aclaracion,
+    }
+
+
+def interpretar_asistente(
+    texto: str | None = None,
+    audio_bytes: bytes | None = None,
+    mime_type: str | None = None,
+    historial_conversacion: list | None = None,
+    contexto: dict | None = None,
+) -> dict:
+    """
+    Interpreta una consulta escrita o un audio y devuelve una respuesta con la
+    acción que la app debe ejecutar (si procede).
+
+    Devuelve un diccionario con las claves de `RespuestaAsistenteAccion`
+    normalizadas. Lanza RuntimeError si falta la clave o falla Gemini.
+    """
+    texto = (texto or "").strip()
+    if not texto and not audio_bytes:
+        raise ValueError("La consulta está vacía.")
+
+    gemini_key = _get_gemini_key()
+    if not gemini_key:
+        raise RuntimeError(
+            "Falta GEMINI_API_KEY. Configúrala en .streamlit/secrets.toml "
+            "o en los Secrets de Streamlit Cloud."
+        )
+
+    try:
+        from google import genai
+        from google.genai import types
+    except Exception as exc:
+        raise RuntimeError(
+            "No se pudo cargar la librería google-genai. Revisa requirements.txt."
+        ) from exc
+
+    perfil_clinico = cargar_perfil_clinico()
+    contexto_vivo = contexto if contexto is not None else construir_contexto_vivo()
+    system_instruction = "\n\n".join(
+        [
+            SYSTEM_PROMPT_ACCIONES,
+            "# PERFIL CLÍNICO Y NUTRICIONAL (NORMATIVO)",
+            perfil_clinico.strip(),
+            "# CONTEXTO VIVO DE LA DESPENSA, TÁPERS, HISTORIAL Y COMPRA",
+            str(contexto_vivo.get("texto") or "").strip(),
+        ]
+    )
+
+    partes: list = []
+    transcripcion_previa = _formatear_historial_chat(historial_conversacion)
+    if transcripcion_previa:
+        partes.append(f"Conversación previa:\n{transcripcion_previa}")
+
+    es_audio = bool(audio_bytes)
+    if es_audio:
+        partes.append(
+            "Entrada actual del usuario: AUDIO. Transcribe literalmente lo que "
+            "dice en el campo 'transcripcion' y después responde o prepara la acción."
+        )
+        partes.append(
+            types.Part.from_bytes(
+                data=audio_bytes,
+                mime_type=mime_type or "audio/wav",
+            )
+        )
+    else:
+        partes.append(f"Entrada actual del usuario (texto):\n{texto}")
+
+    try:
+        client = genai.Client(api_key=gemini_key)
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            response_mime_type="application/json",
+            response_schema=RespuestaAsistenteAccion,
+            temperature=0.2,
+        )
+        response = _generar_con_fallback(client, partes, config)
+        data = json.loads(response.text)
+    except Exception as exc:
+        raise RuntimeError(
+            f"No se pudo interpretar la consulta: {str(exc)[:300]}"
+        ) from exc
+
+    return _normalizar_respuesta_accion(
+        data,
+        texto_original=texto,
+        es_audio=es_audio,
+    )

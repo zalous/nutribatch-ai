@@ -1,6 +1,6 @@
 ---
 documento: Spec Técnico y Funcional
-version: 2.0
+version: 2.1
 stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
 ---
 # Especificacion Tecnica y Funcional
@@ -40,7 +40,7 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
   - `lista_compra_inteligente.py` (Segundo cerebro de la compra: selector de recetas de la semana, cruce de ingredientes con inventario y lista, suma de cantidades y sincronización automática de faltantes)
   - `recetas_batch.py` (Catálogo de recetas aprobadas, alta/edición/borrado y cálculo del reparto batch 55% Gonzalo / 45% Marta)
   - `p2_cocinar_hoy.py` (Nevera/Congelador con fechas de cocinado, **Registrar Cocinado**, **Check Comido**, **Foto en Encimera** y Recetas de rescate Mié/Jue. Incluye las métricas de inventario, el alta manual, la gestión masiva y la zona peligrosa de borrado)
-  - `p3_asistente_voz.py` (Consultor por Voz y Texto: pedir ideas de batch/cenas/desayunos, añadir a la lista de la compra o preguntar qué día se cocinó un plato. En la Fase 3 ya ofrece una consulta de texto de solo lectura)
+  - `p3_asistente_voz.py` (Asistente por Voz y Chat con Memoria: micrófono, consultas contextuales y acciones sobre la lista de la compra, el inventario y el registro de comidas)
   - `p4_salud_nutri.py` (Progreso diario Gonzalo vs Marta y Panel semanal de macros, vitaminas y minerales)
 
 ---
@@ -121,7 +121,12 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 
 ### Pantalla 3: Asistente por Voz y Consultor con Memoria
 - **Consulta contextual de solo lectura (Paso 3.1, ya disponible):** La pestaña Voz permite escribir una pregunta y recibir respuesta de Gemini con el `system_instruction` clínico permanente y el contexto vivo de Supabase (inventario, tápers con `fecha_cocinado` y días transcurridos, historial de comidas y lista de la compra pendiente). Incluye un desplegable para revisar el contexto enviado. Este modo no modifica la base de datos.
-- **Fase 4:** Micrófono directo (`st.audio_input`) y chat rápido donde la IA tiene todo el contexto clínico y de base de datos, además de poder ejecutar acciones (añadir a la compra, actualizar inventario o marcar "Check Comido").
+- **Asistente por Voz y Chat con Acciones (Paso 4.3):** La pestaña Voz incorpora micrófono directo (`st.audio_input`) y chat rápido. Gemini recibe el perfil clínico, el inventario, los tápers con su antigüedad, el historial y la lista de la compra pendiente, y devuelve una respuesta estructurada (`RespuestaAsistenteAccion`) con la transcripción del audio, la respuesta natural y, si procede, la acción a ejecutar:
+  1. **Consulta:** recetas adaptadas al momento, ideas de cena antirreflujo, qué hay en la nevera o qué día se cocinó un plato. No modifica la base de datos.
+  2. **Añadir a la lista de la compra:** apunta uno o varios productos dictados, infiere su categoría interna (`frescos`, `despensa`, `congelados`, `hogar_y_otros`), evita duplicados y conserva la cantidad solo si el usuario la dice.
+  3. **Consumir inventario:** cuando se dice que un alimento o táper ya se ha gastado o tirado, localiza el producto por coincidencia exacta o difusa, descuenta la cantidad indicada (o una ración por defecto) y actualiza nevera, congelador, despensa o tápers. Si hay ambigüedad, no modifica nada y pregunta.
+  4. **Check Comido:** además de descontar del inventario, registra la comida en `registro_comidas` con el momento, la fecha, el reparto (55/45 por defecto) y los nutrientes del táper o de la receta escalados a la cantidad consumida. Si no hay nutrientes, registra la comida sin inventarlos.
+  - **Seguridad:** la app solo ejecuta acciones cuando la intención es explícita y el objetivo se identifica con seguridad; las cantidades, fechas y gramos nunca se inventan. La transcripción del audio se muestra como mensaje del usuario y el resultado real de la acción se añade a la respuesta. **No requiere cambios de esquema ni migración de base de datos.**
 - Casos de uso directos por voz:
   1. *"¿Qué día cocinamos las lentejas que están en la nevera?"* o *"¿Cuándo fue la última vez que hicimos salmón?"*.
   2. *"Apúntame en la lista de la compra bolsas de basura, café y aguacates"*.

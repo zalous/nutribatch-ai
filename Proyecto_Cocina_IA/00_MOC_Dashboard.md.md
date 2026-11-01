@@ -1,6 +1,6 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-4-paso-4.2-validado
+estado: fase-4-paso-4.3-implementado-pendiente-validacion
 fecha_actualizacion: 2026-11-01
 ---
 # Panel de Control y Contexto IA
@@ -19,7 +19,12 @@ fecha_actualizacion: 2026-11-01
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** **Fase 4 en curso**: **Pasos 4.1 y 4.2 validados por el usuario**.
+- **Fase Actual:** **Fase 4 en curso**: **Pasos 4.1 y 4.2 validados por el usuario**; **Paso 4.3 implementado y pendiente de validación**.
+- **Avance de esta sesión (01/11/2026):** **Paso 4.3 implementado, pendiente de validación por el usuario**. En **🎙️ Voz**:
+  1. **Chat contextual:** mantiene la conversación y responde con el perfil clínico y el contexto vivo de Supabase (inventario, tápers con antigüedad, historial y lista de la compra).
+  2. **Micrófono directo:** `st.audio_input` graba la consulta, Gemini la transcribe y devuelve respuesta y acción en una sola llamada estructurada (`RespuestaAsistenteAccion`).
+  3. **Acciones:** añadir varios productos a la lista de la compra (con categoría inferida y sin duplicados), consumir un alimento o táper del inventario (descuento total o parcial), y **Check Comido** (descuenta del inventario y registra la comida con nutrientes y reparto 55/45 por defecto).
+  4. **Seguridad:** solo actúa con intención explícita y objetivo identificado; si hay ambigüedad no modifica nada y pregunta. No inventa cantidades, gramos ni fechas.
 - **Último avance (01/11/2026):** **Paso 4.2 implementado y validado por el usuario**. Implementado en `2adc84c`, ajustado y cerrado en `27e0ec9`. En **🍳 Cocina → 🍳 Acciones → ♻️ Recetas de Rescate**:
   1. **Radiografía de sobras:** métricas de tápers, prioridad roja (≥5 días), nevera y congelador, con los tápers ordenados por antigüedad y los 5 más urgentes destacados.
   2. **Huecos nutricionales de la semana:** compara lo consumido desde el lunes (registro real) con el objetivo proporcional a los días transcurridos, por persona, incluyendo macros, hierro, vitamina C, calcio y vitamina D, controlando los topes de grasas saturadas y azúcares.
@@ -34,7 +39,9 @@ fecha_actualizacion: 2026-11-01
 - **Cambio técnico relevante:** `ai_engine.py` incorpora `reconocer_ingredientes_encimera()` con el modelo estructurado `ResultadoEncimera` (ingredientes, `nombre_inventario`, `notas`, descripción, comidas de pareja y nutrición estimada), perfil clínico, contexto libre del usuario e inventario como referencia; reutiliza el fallback de modelos y la gestión de cuota. `database.py` incorpora `add_items_inventario()` (inserción masiva de tápers), `add_registro_comida()` y la coincidencia difusa `puntuar_coincidencia()` / `mejor_coincidencia_producto()`, que ignora palabras de preparación (adobado, marinado, fileteado…), unifica plurales/género y prioriza el alimento base del inventario. El Check Comido descuenta cantidades parciales y escala los nutrientes; los indivisibles se consumen enteros. La foto usa claves de widgets dinámicas por análisis. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
 - **Cambio técnico del Paso 4.2:** `ai_engine.py` incorpora `resumir_nutricion_semanal()`, `_formatear_resumen_nutricional()`, los modelos `IngredienteRescate`, `RecetaRescate` y `ResultadoRescate`, el `SYSTEM_PROMPT_RESCATE` y `proponer_recetas_rescate()`; reutiliza el perfil clínico, `_formatear_inventario()`, `_formatear_tapers()` y el fallback de modelos/cuota. `database.py` añade `get_registro_comidas_rango()`. La vista muestra sobras por antigüedad, huecos semanales por persona y permite guardar cada propuesta como receta no aprobada. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
 - **Archivos de código del Paso 4.2 (creados/modificados):** `ai_engine.py`, `database.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.0), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-11-01_sesion.md`.
-- **Próximo paso exacto:** **Paso 4.3 — Asistente por Voz y Chat Contextual**: pedir recetas adaptadas al momento, añadir a la lista de la compra hablando, consultar "¿Qué día cocinamos tal plato?" y ejecutar acciones como marcar un alimento o táper como consumido o un plato como "Check Comido". **No empezar el Paso 4.3 sin la confirmación explícita del usuario.**
+- **Cambio técnico del Paso 4.3:** `ai_engine.py` incorpora `SYSTEM_PROMPT_ACCIONES`, los modelos `ItemCompraAsistente` y `RespuestaAsistenteAccion`, `_normalizar_respuesta_accion()` e `interpretar_asistente()` (texto o audio, respuesta estructurada con transcripción, intención y datos de la acción); reutiliza el perfil clínico, `construir_contexto_vivo()`, `_formatear_historial_chat()` y el fallback de modelos/cuota. `views/p3_asistente_voz.py` se reescribe con chat contextual, `st.audio_input`, ejecución segura de acciones (lista de la compra, consumo de inventario y Check Comido) y resolución difusa del producto o táper. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
+- **Archivos de código del Paso 4.3 (creados/modificados):** `ai_engine.py`, `views/p3_asistente_voz.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.1), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
+- **Próximo paso exacto:** **Validar el Paso 4.3 con el usuario** (texto y audio: consulta de recetas, alta en la lista de la compra, consumo de inventario y Check Comido). Una vez validado, marcar `[x]` el Paso 4.3 y continuar con el **Paso 5.1 — Panel Diario de Macros por Persona**. **No empezar el Paso 5.1 sin la confirmación explícita del usuario.**
 
 ---
 
