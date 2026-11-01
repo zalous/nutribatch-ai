@@ -1,6 +1,6 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-4-paso-4.3-implementado-pendiente-validacion
+estado: fase-4-paso-4.3-validado
 fecha_actualizacion: 2026-11-01
 ---
 # Panel de Control y Contexto IA
@@ -19,13 +19,13 @@ fecha_actualizacion: 2026-11-01
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** **Fase 4 en curso**: **Pasos 4.1 y 4.2 validados por el usuario**; **Paso 4.3 implementado y pendiente de validación**.
-- **Avance de esta sesión (01/11/2026):** **Paso 4.3 implementado, pendiente de validación por el usuario**. En **🎙️ Voz**:
+- **Fase Actual:** **Fase 4 completada**: **Pasos 4.1, 4.2 y 4.3 validados por el usuario**. El siguiente paso es el **Paso 5.1** de la Fase 5.
+- **Último avance (01/11/2026):** **Paso 4.3 implementado, desplegado y validado por el usuario**. Publicado en `a8cee9e`. En **🎙️ Voz**:
   1. **Chat contextual:** mantiene la conversación y responde con el perfil clínico y el contexto vivo de Supabase (inventario, tápers con antigüedad, historial y lista de la compra).
   2. **Micrófono directo:** `st.audio_input` graba la consulta, Gemini la transcribe y devuelve respuesta y acción en una sola llamada estructurada (`RespuestaAsistenteAccion`).
   3. **Acciones:** añadir varios productos a la lista de la compra (con categoría inferida y sin duplicados), consumir un alimento o táper del inventario (descuento total o parcial), y **Check Comido** (descuenta del inventario y registra la comida con nutrientes y reparto 55/45 por defecto).
   4. **Seguridad:** solo actúa con intención explícita y objetivo identificado; si hay ambigüedad no modifica nada y pregunta. No inventa cantidades, gramos ni fechas.
-- **Último avance (01/11/2026):** **Paso 4.2 implementado y validado por el usuario**. Implementado en `2adc84c`, ajustado y cerrado en `27e0ec9`. En **🍳 Cocina → 🍳 Acciones → ♻️ Recetas de Rescate**:
+- **Avance anterior (01/11/2026, sesión previa):** **Paso 4.2 implementado y validado por el usuario**. Implementado en `2adc84c`, ajustado y cerrado en `27e0ec9`. En **🍳 Cocina → 🍳 Acciones → ♻️ Recetas de Rescate**:
   1. **Radiografía de sobras:** métricas de tápers, prioridad roja (≥5 días), nevera y congelador, con los tápers ordenados por antigüedad y los 5 más urgentes destacados.
   2. **Huecos nutricionales de la semana:** compara lo consumido desde el lunes (registro real) con el objetivo proporcional a los días transcurridos, por persona, incluyendo macros, hierro, vitamina C, calcio y vitamina D, controlando los topes de grasas saturadas y azúcares.
   3. **♻️ Proponer recetas de rescate:** envía a Gemini el perfil clínico, el inventario, los tápers con su antigüedad, el resumen semanal y un campo de contexto libre. Devuelve 1-3 recetas ordenadas por urgencia con ingredientes ✅ disponibles o 🛒 a comprar, pasos, guía de emplatado 55/45, huecos que cubre, aviso clínico y nutrición estimada por comida de pareja. Cada propuesta se puede guardar en el recetario como receta no aprobada.
@@ -40,8 +40,8 @@ fecha_actualizacion: 2026-11-01
 - **Cambio técnico del Paso 4.2:** `ai_engine.py` incorpora `resumir_nutricion_semanal()`, `_formatear_resumen_nutricional()`, los modelos `IngredienteRescate`, `RecetaRescate` y `ResultadoRescate`, el `SYSTEM_PROMPT_RESCATE` y `proponer_recetas_rescate()`; reutiliza el perfil clínico, `_formatear_inventario()`, `_formatear_tapers()` y el fallback de modelos/cuota. `database.py` añade `get_registro_comidas_rango()`. La vista muestra sobras por antigüedad, huecos semanales por persona y permite guardar cada propuesta como receta no aprobada. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
 - **Archivos de código del Paso 4.2 (creados/modificados):** `ai_engine.py`, `database.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.0), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-11-01_sesion.md`.
 - **Cambio técnico del Paso 4.3:** `ai_engine.py` incorpora `SYSTEM_PROMPT_ACCIONES`, los modelos `ItemCompraAsistente` y `RespuestaAsistenteAccion`, `_normalizar_respuesta_accion()` e `interpretar_asistente()` (texto o audio, respuesta estructurada con transcripción, intención y datos de la acción); reutiliza el perfil clínico, `construir_contexto_vivo()`, `_formatear_historial_chat()` y el fallback de modelos/cuota. `views/p3_asistente_voz.py` se reescribe con chat contextual, `st.audio_input`, ejecución segura de acciones (lista de la compra, consumo de inventario y Check Comido) y resolución difusa del producto o táper. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
-- **Archivos de código del Paso 4.3 (creados/modificados):** `ai_engine.py`, `views/p3_asistente_voz.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.1), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
-- **Próximo paso exacto:** **Validar el Paso 4.3 con el usuario** (texto y audio: consulta de recetas, alta en la lista de la compra, consumo de inventario y Check Comido). Una vez validado, marcar `[x]` el Paso 4.3 y continuar con el **Paso 5.1 — Panel Diario de Macros por Persona**. **No empezar el Paso 5.1 sin la confirmación explícita del usuario.**
+- **Archivos de código del Paso 4.3 (creados/modificados):** `ai_engine.py`, `views/p3_asistente_voz.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.1), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-11-01_sesion_2.md`.
+- **Próximo paso exacto:** **Paso 5.1 — Panel Diario de Macros por Persona** (Fase 5): tarjetas detalladas para Gonzalo (1.700 kcal) y Marta (1.350-1.400 kcal) con calorías, proteínas, carbohidratos complejos, fibra, azúcares libres y grasas desglosadas (mono, poli/Omega-3 y tope de saturadas), leyendo el registro real de comidas. **No empezar el Paso 5.1 sin la confirmación explícita del usuario.**
 
 ---
 
@@ -68,7 +68,7 @@ fecha_actualizacion: 2026-11-01
 REPASAR FUNCIONAMIENTO DÍA A DÍA Y NUTRIENTES
 - [x] **Paso 4.1:** Botón de "Registrar Cocinado" (guarda la `fecha_cocinado` exacta del lote o receta) y "Check Comido" (descuenta 1 comida de pareja y suma nutrientes del día). Incluye función "Foto en Encimera" para descontar ingredientes sueltos con la cámara. *(Implementado en `e98bc00`, corregido en `6bac0a8` y validado por el usuario el 31/10/2026)*
 - [x] **Paso 4.2:** Botón de "Recetas de Rescate (Miércoles/Jueves)" según sobras de nevera/congelador, antigüedad de los tápers cocinados y huecos de macros/vitaminas/minerales de la semana. *(Implementado en `2adc84c` y validado por el usuario el 01/11/2026)*
-- [ ] **Paso 4.3:** Asistente por Voz y Chat Contextual: permite pedir recetas adaptadas al momento, añadir cosas a la lista de la compra hablando o preguntar "¿Qué día cocinamos tal plato?" consultando el historial y la nevera. También se le puede decir que un alimento o táper ya se consumió y que lo actualice el almacenaje donde toque (nevera, despensa, congelador o tápers). Por último, que marque una receta o táper como "Check Comido" si se le pide (descuenta 1 comida de pareja y suma nutrientes del día). 
+- [x] **Paso 4.3:** Asistente por Voz y Chat Contextual: permite pedir recetas adaptadas al momento, añadir cosas a la lista de la compra hablando o preguntar "¿Qué día cocinamos tal plato?" consultando el historial y la nevera. También se le puede decir que un alimento o táper ya se consumió y que lo actualice el almacenaje donde toque (nevera, despensa, congelador o tápers). Por último, que marque una receta o táper como "Check Comido" si se le pide (descuenta 1 comida de pareja y suma nutrientes del día). *(Implementado en `a8cee9e` y validado por el usuario el 01/11/2026)*
 
 ### Fase 5: Cuadro de Mando Nutricional, Vitaminico y Clinico Completo
 - [ ] **Paso 5.1 (Panel Diario de Macros por Persona):** Tarjetas detalladas para Gonzalo (1.700 kcal) y Marta (1.350-1.400 kcal) con Calorías, Proteínas, Carbohidratos complejos, Fibra (soluble/insoluble), Azúcares libres y Grasas desglosadas (Mono, Poli/Omega-3 y tope de Saturadas).
