@@ -1,6 +1,6 @@
 ---
 documento: Spec Técnico y Funcional
-version: 2.1
+version: 2.2
 stack: Python + Streamlit Cloud + Supabase + Gemini 3.6 Flash
 ---
 # Especificacion Tecnica y Funcional
@@ -41,7 +41,7 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
   - `recetas_batch.py` (Catálogo de recetas aprobadas, alta/edición/borrado y cálculo del reparto batch 55% Gonzalo / 45% Marta)
   - `p2_cocinar_hoy.py` (Nevera/Congelador con fechas de cocinado, **Registrar Cocinado**, **Check Comido**, **Foto en Encimera** y Recetas de rescate Mié/Jue. Incluye las métricas de inventario, el alta manual, la gestión masiva y la zona peligrosa de borrado)
   - `p3_asistente_voz.py` (Asistente por Voz y Chat con Memoria: micrófono, consultas contextuales y acciones sobre la lista de la compra, el inventario y el registro de comidas)
-  - `p4_salud_nutri.py` (Progreso diario Gonzalo vs Marta y Panel semanal de macros, vitaminas y minerales)
+  - `p4_salud_nutri.py` (Panel Diario de Macros por Persona con Gonzalo vs Marta, leyendo el registro real de comidas; base del futuro Panel semanal de micronutrientes y semáforos clínicos)
 
 ---
 
@@ -77,7 +77,7 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
 - `guia_emplatado` (Text) — Cómo repartir la olla en tápers y cuántos cazos se sirve Gonzalo (55%) y Marta (45%).
 - `ingredientes_json` (JSONB) — Lista de objetos con la forma `[{"nombre": "Lentejas", "cantidad": "300 g"}, ...]`. La cantidad es opcional.
 - `pasos_preparacion` (Text)
-- `nutricion_por_comida_pareja` (JSONB) — Nutrientes de **una comida de pareja**, nunca de una persona ni de la olla entera. Claves admitidas: `kcal`, `proteinas_g`, `carbohidratos_g`, `grasas_g`, `grasas_saturadas_g`, `fibra_g`, `azucares_g`, `hierro_mg`, `vitamina_c_mg`, `calcio_mg`, `vitamina_d_ug`. Solo se guardan valores mayores que 0 y nunca se inventan. El reparto 55/45 y los totales de la olla se calculan al vuelo y no se almacenan.
+- `nutricion_por_comida_pareja` (JSONB) — Nutrientes de **una comida de pareja**, nunca de una persona ni de la olla entera. Claves admitidas: `kcal`, `proteinas_g`, `carbohidratos_g`, `grasas_g`, `grasas_saturadas_g`, `grasas_monoinsaturadas_g`, `grasas_poliinsaturadas_g`, `omega3_g`, `fibra_g`, `fibra_soluble_g`, `fibra_insoluble_g`, `azucares_g`, `hierro_mg`, `vitamina_c_mg`, `calcio_mg`, `vitamina_d_ug`. Solo se guardan valores mayores que 0 y nunca se inventan. El reparto 55/45 y los totales de la olla se calculan al vuelo y no se almacenan. Las claves de desglose son opcionales: si no constan, la app muestra «sin datos» y nunca las estima a ojo.
 - `ultima_vez_cocinada` (Date, opcional) — Se actualiza automáticamente cada vez que se cocina esa receta para poder preguntarle a la IA "¿Qué día hicimos este plato por última vez?".
 
 ### Tabla 4: `registro_comidas` (Historial de Cocinado y Consumo Nutricional)
@@ -134,5 +134,11 @@ En la carpeta raíz del proyecto (fuera de la subcarpeta de Obsidian):
   4. *"Hemos desayunado yogur griego con avena y nueces, regístralo"*.
 
 ### Pantalla 4: Control Nutricional, Vitaminico y Salud
-- Tarjetas diarias individuales (Gonzalo 1.700 kcal vs. Marta 1.350 kcal) con barra de proteínas, carbos complejos, fibra y grasas desglosadas.
-- Panel semanal completo de Vitaminas, Minerales y Semáforos Clínicos (Hierro + biodisponibilidad, Vitamina D, LDL, Ácido Úrico y Reflujo).
+- **Panel Diario de Macros por Persona (Paso 5.1):** La pantalla permite elegir el día a revisar (por defecto hoy) y carga el registro real de `registro_comidas` de esa fecha. Muestra una pestaña para Gonzalo (1.700 kcal) y otra para Marta (1.350-1.400 kcal) con:
+  1. **Calorías:** total consumido, objetivo, restante disponible o exceso del día.
+  2. **Macros:** barras de progreso de proteínas, carbohidratos complejos, grasas totales, fibra total y topes máximos de grasas saturadas y azúcares libres. Los topes avisan cuando se superan.
+  3. **Grasas desglosadas:** saturadas (con su tope), monoinsaturadas y poliinsaturadas con su porcentaje sobre las grasas totales, y Omega-3 (EPA+DHA+ALA) cuando consta.
+  4. **Fibra:** total con su objetivo y desglose soluble/insoluble.
+  5. **Comidas del día:** tabla con momento, descripción, kcal de cada persona y tipo de reparto.
+  - Los totales se suman por separado desde `nutricion_gonzalo` y `nutricion_marta`. Los objetivos salen del perfil clínico. El desglose de grasas y de fibra solo se muestra si la receta, el táper o el registro manual incluyen esos datos; si no constan, aparece «sin datos» y nunca se estiman a ojo. **No requiere cambios de esquema ni migración de base de datos** (todo vive en los JSONB existentes).
+- Panel semanal completo de Vitaminas, Minerales y Semáforos Clínicos (Hierro + biodisponibilidad, Vitamina D, LDL, Ácido Úrico y Reflujo) — **Paso 5.2, pendiente**.

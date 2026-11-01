@@ -1,6 +1,6 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-4-paso-4.3-validado
+estado: fase-5-paso-5.1-implementado-pendiente-validacion
 fecha_actualizacion: 2026-11-01
 ---
 # Panel de Control y Contexto IA
@@ -19,8 +19,15 @@ fecha_actualizacion: 2026-11-01
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** **Fase 4 completada**: **Pasos 4.1, 4.2 y 4.3 validados por el usuario**. El siguiente paso es el **Paso 5.1** de la Fase 5.
-- **Último avance (01/11/2026):** **Paso 4.3 implementado, desplegado y validado por el usuario**. Publicado en `a8cee9e`. En **🎙️ Voz**:
+- **Fase Actual:** **Fase 5, Paso 5.1 implementado y pendiente de validación por el usuario**. La Fase 4 está completada y validada (Pasos 4.1, 4.2 y 4.3).
+- **Último avance (01/11/2026):** **Paso 5.1 — Panel Diario de Macros por Persona implementado, pendiente de validación**. En **📊 Salud**:
+  1. **Selector de día:** por defecto hoy, con botón *Volver a hoy*; carga el registro real de `registro_comidas` de esa fecha.
+  2. **Tarjetas por persona:** pestañas de Gonzalo (1.700 kcal) y Marta (1.350-1.400 kcal) con calorías consumidas, objetivo, restante o exceso y número de comidas con nutrientes.
+  3. **Barras de progreso:** proteínas, carbohidratos complejos, grasas totales, fibra total y topes máximos de grasas saturadas y azúcares libres, con aviso al superar un tope.
+  4. **Grasas desglosadas:** saturadas (tope), monoinsaturadas y poliinsaturadas con su porcentaje sobre las grasas totales, más Omega-3 cuando consta.
+  5. **Fibra soluble/insoluble:** total con objetivo y desglose cuando las recetas o registros lo incluyen; si no consta, se muestra «sin datos» sin inventar valores.
+  6. **Comidas del día:** tabla con momento, descripción, kcal de Gonzalo, kcal de Marta y tipo de reparto.
+- **Avance anterior (01/11/2026, Paso 4.3):** **Paso 4.3 implementado, desplegado y validado por el usuario**. Publicado en `a8cee9e`. En **🎙️ Voz**:
   1. **Chat contextual:** mantiene la conversación y responde con el perfil clínico y el contexto vivo de Supabase (inventario, tápers con antigüedad, historial y lista de la compra).
   2. **Micrófono directo:** `st.audio_input` graba la consulta, Gemini la transcribe y devuelve respuesta y acción en una sola llamada estructurada (`RespuestaAsistenteAccion`).
   3. **Acciones:** añadir varios productos a la lista de la compra (con categoría inferida y sin duplicados), consumir un alimento o táper del inventario (descuento total o parcial), y **Check Comido** (descuenta del inventario y registra la comida con nutrientes y reparto 55/45 por defecto).
@@ -41,7 +48,9 @@ fecha_actualizacion: 2026-11-01
 - **Archivos de código del Paso 4.2 (creados/modificados):** `ai_engine.py`, `database.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.0), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-11-01_sesion.md`.
 - **Cambio técnico del Paso 4.3:** `ai_engine.py` incorpora `SYSTEM_PROMPT_ACCIONES`, los modelos `ItemCompraAsistente` y `RespuestaAsistenteAccion`, `_normalizar_respuesta_accion()` e `interpretar_asistente()` (texto o audio, respuesta estructurada con transcripción, intención y datos de la acción); reutiliza el perfil clínico, `construir_contexto_vivo()`, `_formatear_historial_chat()` y el fallback de modelos/cuota. `views/p3_asistente_voz.py` se reescribe con chat contextual, `st.audio_input`, ejecución segura de acciones (lista de la compra, consumo de inventario y Check Comido) y resolución difusa del producto o táper. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
 - **Archivos de código del Paso 4.3 (creados/modificados):** `ai_engine.py`, `views/p3_asistente_voz.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.1), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-11-01_sesion_2.md`.
-- **Próximo paso exacto:** **Paso 5.1 — Panel Diario de Macros por Persona** (Fase 5): tarjetas detalladas para Gonzalo (1.700 kcal) y Marta (1.350-1.400 kcal) con calorías, proteínas, carbohidratos complejos, fibra, azúcares libres y grasas desglosadas (mono, poli/Omega-3 y tope de saturadas), leyendo el registro real de comidas. **No empezar el Paso 5.1 sin la confirmación explícita del usuario.**
+- **Cambio técnico del Paso 5.1:** `ai_engine.py` amplía `CLAVES_NUTRICION`, `ETIQUETAS_NUTRIENTES` y el modelo `NutricionEncimera` con `grasas_monoinsaturadas_g`, `grasas_poliinsaturadas_g`, `omega3_g`, `fibra_soluble_g` y `fibra_insoluble_g` (claves opcionales dentro de los JSONB existentes). `views/p2_cocinar_hoy.py` y `views/recetas_batch.py` añaden esos campos a sus formularios de nutrición. `views/p4_salud_nutri.py` se reescribe como Panel Diario de Macros por Persona: selector de fecha, carga de `registro_comidas`, tarjetas y barras por persona, desglose de grasas y fibra, avisos de topes y tabla de comidas del día. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
+- **Archivos de código del Paso 5.1 (creados/modificados):** `ai_engine.py`, `views/p2_cocinar_hoy.py`, `views/recetas_batch.py`, `views/p4_salud_nutri.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.2), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
+- **Próximo paso exacto:** **Validar el Paso 5.1 en la app** (📊 Salud): comprobar el selector de día, las tarjetas de Gonzalo y Marta, las barras de macros, el desglose de grasas/fibra, los avisos de topes y la tabla de comidas. Tras la validación explícita del usuario, marcar el Paso 5.1 como `[x]` y continuar con el **Paso 5.2 — Panel Semanal de Micronutrientes y Alertas Clínicas**. **No empezar el Paso 5.2 sin la confirmación explícita del usuario.**
 
 ---
 

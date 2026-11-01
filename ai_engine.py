@@ -78,10 +78,15 @@ class IngredienteEncimera(BaseModel):
 class NutricionEncimera(BaseModel):
     kcal: float = Field(default=0, description="Calorías estimadas de UNA comida de pareja (los dos juntos)")
     proteinas_g: float = Field(default=0)
-    carbohidratos_g: float = Field(default=0)
-    grasas_g: float = Field(default=0)
+    carbohidratos_g: float = Field(default=0, description="Carbohidratos complejos (integrales, legumbres, tubérculos, verduras)")
+    grasas_g: float = Field(default=0, description="Grasas totales")
     grasas_saturadas_g: float = Field(default=0)
-    fibra_g: float = Field(default=0)
+    grasas_monoinsaturadas_g: float = Field(default=0, description="Grasas monoinsaturadas (AOVE, aguacate, frutos secos)")
+    grasas_poliinsaturadas_g: float = Field(default=0, description="Grasas poliinsaturadas (pescado azul, semillas, frutos secos)")
+    omega3_g: float = Field(default=0, description="Omega-3 (EPA+DHA+ALA) incluido dentro de las poliinsaturadas; 0 si no se conoce")
+    fibra_g: float = Field(default=0, description="Fibra total")
+    fibra_soluble_g: float = Field(default=0, description="Fibra soluble (avena, legumbres, fruta entera, semillas)")
+    fibra_insoluble_g: float = Field(default=0, description="Fibra insoluble (salvado, verduras, cereales integrales)")
     azucares_g: float = Field(default=0)
     hierro_mg: float = Field(default=0)
     vitamina_c_mg: float = Field(default=0)
@@ -854,7 +859,12 @@ CLAVES_NUTRICION = (
     "carbohidratos_g",
     "grasas_g",
     "grasas_saturadas_g",
+    "grasas_monoinsaturadas_g",
+    "grasas_poliinsaturadas_g",
+    "omega3_g",
     "fibra_g",
+    "fibra_soluble_g",
+    "fibra_insoluble_g",
     "azucares_g",
     "hierro_mg",
     "vitamina_c_mg",
@@ -898,10 +908,15 @@ NUTRIENTES_TOPE = {"grasas_saturadas_g", "azucares_g"}
 ETIQUETAS_NUTRIENTES = {
     "kcal": ("Calorías", "kcal"),
     "proteinas_g": ("Proteínas", "g"),
-    "carbohidratos_g": ("Carbohidratos", "g"),
+    "carbohidratos_g": ("Carbohidratos complejos", "g"),
     "grasas_g": ("Grasas totales", "g"),
     "grasas_saturadas_g": ("Grasas saturadas", "g"),
-    "fibra_g": ("Fibra", "g"),
+    "grasas_monoinsaturadas_g": ("Grasas monoinsaturadas", "g"),
+    "grasas_poliinsaturadas_g": ("Grasas poliinsaturadas", "g"),
+    "omega3_g": ("Omega-3", "g"),
+    "fibra_g": ("Fibra total", "g"),
+    "fibra_soluble_g": ("Fibra soluble", "g"),
+    "fibra_insoluble_g": ("Fibra insoluble", "g"),
     "azucares_g": ("Azúcares libres", "g"),
     "hierro_mg": ("Hierro", "mg"),
     "vitamina_c_mg": ("Vitamina C", "mg"),
