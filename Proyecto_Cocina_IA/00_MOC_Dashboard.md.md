@@ -1,6 +1,6 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-5-paso-5.1-implementado-pendiente-validacion
+estado: fase-5-paso-5.1-publicado-pendiente-validacion
 fecha_actualizacion: 2026-11-01
 ---
 # Panel de Control y Contexto IA
@@ -19,8 +19,8 @@ fecha_actualizacion: 2026-11-01
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** **Fase 5, Paso 5.1 implementado y pendiente de validación por el usuario**. La Fase 4 está completada y validada (Pasos 4.1, 4.2 y 4.3).
-- **Último avance (01/11/2026):** **Paso 5.1 — Panel Diario de Macros por Persona implementado, pendiente de validación**. En **📊 Salud**:
+- **Fase Actual:** **Fase 5, Paso 5.1 implementado y publicado en `8bc0aa9`, pendiente de validación por el usuario**. La Fase 4 está completada y validada (Pasos 4.1, 4.2 y 4.3). El Paso 5.1 **no se marca `[x]` hasta que el usuario lo valide en la app**.
+- **Último avance (01/11/2026):** **Paso 5.1 — Panel Diario de Macros por Persona implementado, publicado y pendiente de validación**. Publicado en `8bc0aa9`. En **📊 Salud**:
   1. **Selector de día:** por defecto hoy, con botón *Volver a hoy*; carga el registro real de `registro_comidas` de esa fecha.
   2. **Tarjetas por persona:** pestañas de Gonzalo (1.700 kcal) y Marta (1.350-1.400 kcal) con calorías consumidas, objetivo, restante o exceso y número de comidas con nutrientes.
   3. **Barras de progreso:** proteínas, carbohidratos complejos, grasas totales, fibra total y topes máximos de grasas saturadas y azúcares libres, con aviso al superar un tope.
@@ -49,7 +49,7 @@ fecha_actualizacion: 2026-11-01
 - **Cambio técnico del Paso 4.3:** `ai_engine.py` incorpora `SYSTEM_PROMPT_ACCIONES`, los modelos `ItemCompraAsistente` y `RespuestaAsistenteAccion`, `_normalizar_respuesta_accion()` e `interpretar_asistente()` (texto o audio, respuesta estructurada con transcripción, intención y datos de la acción); reutiliza el perfil clínico, `construir_contexto_vivo()`, `_formatear_historial_chat()` y el fallback de modelos/cuota. `views/p3_asistente_voz.py` se reescribe con chat contextual, `st.audio_input`, ejecución segura de acciones (lista de la compra, consumo de inventario y Check Comido) y resolución difusa del producto o táper. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
 - **Archivos de código del Paso 4.3 (creados/modificados):** `ai_engine.py`, `views/p3_asistente_voz.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.1), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-11-01_sesion_2.md`.
 - **Cambio técnico del Paso 5.1:** `ai_engine.py` amplía `CLAVES_NUTRICION`, `ETIQUETAS_NUTRIENTES` y el modelo `NutricionEncimera` con `grasas_monoinsaturadas_g`, `grasas_poliinsaturadas_g`, `omega3_g`, `fibra_soluble_g` y `fibra_insoluble_g` (claves opcionales dentro de los JSONB existentes). `views/p2_cocinar_hoy.py` y `views/recetas_batch.py` añaden esos campos a sus formularios de nutrición. `views/p4_salud_nutri.py` se reescribe como Panel Diario de Macros por Persona: selector de fecha, carga de `registro_comidas`, tarjetas y barras por persona, desglose de grasas y fibra, avisos de topes y tabla de comidas del día. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
-- **Archivos de código del Paso 5.1 (creados/modificados):** `ai_engine.py`, `views/p2_cocinar_hoy.py`, `views/recetas_batch.py`, `views/p4_salud_nutri.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.2), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
+- **Archivos de código del Paso 5.1 (creados/modificados):** `ai_engine.py`, `views/p2_cocinar_hoy.py`, `views/recetas_batch.py`, `views/p4_salud_nutri.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.2), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-11-01_sesion_3.md`.
 - **Próximo paso exacto:** **Validar el Paso 5.1 en la app** (📊 Salud): comprobar el selector de día, las tarjetas de Gonzalo y Marta, las barras de macros, el desglose de grasas/fibra, los avisos de topes y la tabla de comidas. Tras la validación explícita del usuario, marcar el Paso 5.1 como `[x]` y continuar con el **Paso 5.2 — Panel Semanal de Micronutrientes y Alertas Clínicas**. **No empezar el Paso 5.2 sin la confirmación explícita del usuario.**
 
 ---
@@ -80,5 +80,5 @@ REPASAR FUNCIONAMIENTO DÍA A DÍA Y NUTRIENTES
 - [x] **Paso 4.3:** Asistente por Voz y Chat Contextual: permite pedir recetas adaptadas al momento, añadir cosas a la lista de la compra hablando o preguntar "¿Qué día cocinamos tal plato?" consultando el historial y la nevera. También se le puede decir que un alimento o táper ya se consumió y que lo actualice el almacenaje donde toque (nevera, despensa, congelador o tápers). Por último, que marque una receta o táper como "Check Comido" si se le pide (descuenta 1 comida de pareja y suma nutrientes del día). *(Implementado en `a8cee9e` y validado por el usuario el 01/11/2026)*
 
 ### Fase 5: Cuadro de Mando Nutricional, Vitaminico y Clinico Completo
-- [ ] **Paso 5.1 (Panel Diario de Macros por Persona):** Tarjetas detalladas para Gonzalo (1.700 kcal) y Marta (1.350-1.400 kcal) con Calorías, Proteínas, Carbohidratos complejos, Fibra (soluble/insoluble), Azúcares libres y Grasas desglosadas (Mono, Poli/Omega-3 y tope de Saturadas).
+- [ ] **Paso 5.1 (Panel Diario de Macros por Persona):** Tarjetas detalladas para Gonzalo (1.700 kcal) y Marta (1.350-1.400 kcal) con Calorías, Proteínas, Carbohidratos complejos, Fibra (soluble/insoluble), Azúcares libres y Grasas desglosadas (Mono, Poli/Omega-3 y tope de Saturadas). *(Implementado y publicado en `8bc0aa9`; pendiente de validación del usuario)*
 - [ ] **Paso 5.2 (Panel Semanal de Micronutrientes y Alertas Clínicas):** Barras de progreso semanal (% CDR) de Vitaminas (D, C, B12, B9, B6, B1, B2, B3, A, E, K), Minerales (Hierro + biodisponibilidad, Magnesio, Potasio, Calcio, Zinc, Selenio, Fósforo, Sodio) y Semáforos Clínicos (Purinas/Ácido Úrico, LDL y Antirreflujo).
