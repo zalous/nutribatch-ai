@@ -1,7 +1,7 @@
 ---
 proyecto: NutriBatch AI (Planificador de Cocina e Inventario)
-estado: fase-4-paso-4.1-validado
-fecha_actualizacion: 2026-10-31
+estado: fase-4-paso-4.2-validado
+fecha_actualizacion: 2026-11-01
 ---
 # Panel de Control y Contexto IA
 
@@ -19,16 +19,22 @@ fecha_actualizacion: 2026-10-31
 ---
 
 ## ESTADO ACTUAL
-- **Fase Actual:** **Fase 4 en curso**: **Paso 4.1 validado por el usuario el 31/10/2026**. Fase 3 cerrada.
-- **Último avance (31/10/2026):** **Paso 4.1 terminado y validado**. Implementado en `e98bc00`, corregido tras la primera prueba en `6bac0a8` y con una mejora final del emparejamiento con inventario en `7811d3b`. En **🍳 Cocina → 🍳 Acciones** hay tres pestañas:
+- **Fase Actual:** **Fase 4 en curso**: **Pasos 4.1 y 4.2 validados por el usuario**.
+- **Último avance (01/11/2026):** **Paso 4.2 implementado y validado por el usuario**. Implementado en `2adc84c` y ajustado en el cierre del 01/11/2026. En **🍳 Cocina → 🍳 Acciones → ♻️ Recetas de Rescate**:
+  1. **Radiografía de sobras:** métricas de tápers, prioridad roja (≥5 días), nevera y congelador, con los tápers ordenados por antigüedad y los 5 más urgentes destacados.
+  2. **Huecos nutricionales de la semana:** compara lo consumido desde el lunes (registro real) con el objetivo proporcional a los días transcurridos, por persona, incluyendo macros, hierro, vitamina C, calcio y vitamina D, controlando los topes de grasas saturadas y azúcares.
+  3. **♻️ Proponer recetas de rescate:** envía a Gemini el perfil clínico, el inventario, los tápers con su antigüedad, el resumen semanal y un campo de contexto libre. Devuelve 1-3 recetas ordenadas por urgencia con ingredientes ✅ disponibles o 🛒 a comprar, pasos, guía de emplatado 55/45, huecos que cubre, aviso clínico y nutrición estimada por comida de pareja. Cada propuesta se puede guardar en el recetario como receta no aprobada.
+- **Sin migración:** se reutiliza `registro_comidas`; solo se añadió la consulta `get_registro_comidas_rango()` en `database.py`.
+- **Avance anterior (31/10/2026):** **Paso 4.1 terminado y validado**. Implementado en `e98bc00`, corregido tras la primera prueba en `6bac0a8` y con una mejora final del emparejamiento con inventario en `7811d3b`. En **🍳 Cocina → 🍳 Acciones** hay tres pestañas:
   1. **🍳 Registrar Cocinado:** elige receta, fecha real, número de tápers y destino (Tápers Batch, Nevera o Congelador). Inserta un táper por comida de pareja con `fecha_cocinado`, `fecha_entrada`, `cantidad_aprox = "1 comida de pareja"` y la nutrición por comida de pareja de la receta, y actualiza `ultima_vez_cocinada` en `recetas`. Si la receta no tiene nutrición, se puede añadir para esos tápers (sin modificar la receta) o guardar con aviso.
   2. **✅ Check Comido:** elige cualquier ítem de nevera/congelador/despensa/tápers, momento, fecha de consumo y reparto (55/45, 50/50, solo Gonzalo o solo Marta). Permite indicar la cantidad real consumida (ración completa o parcial: 0,25/0,5… o gramos), descuenta proporcionalmente y borra el ítem solo al agotarse; los indivisibles se consumen enteros. Los nutrientes se escalan a lo consumido. Guarda en `registro_comidas` la descripción con la cantidad, `fecha_cocinado`, `receta_id` si se reconoce y `nutricion_gonzalo` / `nutricion_marta` repartidas. Los nutrientes salen del táper, de una receta guardada o se introducen a mano; también se puede registrar sin nutrientes.
   3. **📸 Foto en Encimera:** el usuario elige *subir del carrete* (por defecto, cámara apagada) o *hacer foto con la cámara*. Gemini Vision reconoce ingredientes crudos con el perfil clínico, el inventario como referencia y un campo de contexto libre ("el pavo lo he marinado yo"). Devuelve el producto del inventario con el que se corresponde cada ingrediente; la tabla permite cambiarlo a mano o marcar *No descontar*. El usuario elige **comida de hoy** (registra consumo y nutrientes con reparto) o **batch** (crea tápers con fecha y nutrición) y confirma. La estimación nutricional es editable y nunca se inventan gramos.
-- **Validación:** el usuario probó el 31/10/2026 las tres acciones con las correcciones (cámara opcional, contexto/cruce de inventario y consumo parcial) y dio el Paso 4.1 por finalizado.
+- **Validación del Paso 4.1:** el usuario probó el 31/10/2026 las tres acciones con las correcciones (cámara opcional, contexto/cruce de inventario y consumo parcial) y dio el Paso 4.1 por finalizado.
 - **Pasos anteriores validados:** 3.1 en `952706e` (motor IA contextual), 3.2 en `aa3d4b8` (recetas y reparto 55/45) y 3.3 en `c1ab194` + `7d589ca` (lista de la compra "Segundo Cerebro" con suma de cantidades).
 - **Cambio técnico relevante:** `ai_engine.py` incorpora `reconocer_ingredientes_encimera()` con el modelo estructurado `ResultadoEncimera` (ingredientes, `nombre_inventario`, `notas`, descripción, comidas de pareja y nutrición estimada), perfil clínico, contexto libre del usuario e inventario como referencia; reutiliza el fallback de modelos y la gestión de cuota. `database.py` incorpora `add_items_inventario()` (inserción masiva de tápers), `add_registro_comida()` y la coincidencia difusa `puntuar_coincidencia()` / `mejor_coincidencia_producto()`, que ignora palabras de preparación (adobado, marinado, fileteado…), unifica plurales/género y prioriza el alimento base del inventario. El Check Comido descuenta cantidades parciales y escala los nutrientes; los indivisibles se consumen enteros. La foto usa claves de widgets dinámicas por análisis. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
-- **Archivos de código creados/modificados en esta sesión:** `ai_engine.py`, `database.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v1.9), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`, `Proyecto_Cocina_IA/sesiones/2026-10-31_sesion.md`.
-- **Próximo paso exacto:** **Paso 4.2 — Recetas de Rescate (Miércoles/Jueves)**. Implementar una acción que analice las sobras de nevera/congelador, la antigüedad de los tápers cocinados y los huecos de macros/vitaminas/minerales de la semana para proponer recetas de rescate. **No empezar el Paso 4.2 sin la confirmación explícita del usuario.**
+- **Cambio técnico del Paso 4.2:** `ai_engine.py` incorpora `resumir_nutricion_semanal()`, `_formatear_resumen_nutricional()`, los modelos `IngredienteRescate`, `RecetaRescate` y `ResultadoRescate`, el `SYSTEM_PROMPT_RESCATE` y `proponer_recetas_rescate()`; reutiliza el perfil clínico, `_formatear_inventario()`, `_formatear_tapers()` y el fallback de modelos/cuota. `database.py` añade `get_registro_comidas_rango()`. La vista muestra sobras por antigüedad, huecos semanales por persona y permite guardar cada propuesta como receta no aprobada. **No hay migración de base de datos:** `supabase_init.sql` no se ha tocado.
+- **Archivos de código creados/modificados en esta sesión:** `ai_engine.py`, `database.py`, `views/p2_cocinar_hoy.py`, `Proyecto_Cocina_IA/01_Spec_Tecnico_y_Funcional.md` (v2.0), `Proyecto_Cocina_IA/00_MOC_Dashboard.md.md`.
+- **Próximo paso exacto:** **Paso 4.3 — Asistente por Voz y Chat Contextual**: pedir recetas adaptadas al momento, añadir a la lista de la compra hablando, consultar "¿Qué día cocinamos tal plato?" y ejecutar acciones como marcar un alimento o táper como consumido o un plato como "Check Comido". **No empezar el Paso 4.3 sin la confirmación explícita del usuario.**
 
 ---
 
@@ -54,7 +60,7 @@ fecha_actualizacion: 2026-10-31
 ### Fase 4: Dia a Dia (Checks de Racion, Foto en Encimera, Voz con Memoria y Rescate)
 REPASAR FUNCIONAMIENTO DÍA A DÍA Y NUTRIENTES
 - [x] **Paso 4.1:** Botón de "Registrar Cocinado" (guarda la `fecha_cocinado` exacta del lote o receta) y "Check Comido" (descuenta 1 comida de pareja y suma nutrientes del día). Incluye función "Foto en Encimera" para descontar ingredientes sueltos con la cámara. *(Implementado en `e98bc00`, corregido en `6bac0a8` y validado por el usuario el 31/10/2026)*
-- [ ] **Paso 4.2:** Botón de "Recetas de Rescate (Miércoles/Jueves)" según sobras de nevera/congelador, antigüedad de los tápers cocinados y huecos de macros/vitaminas/minerales de la semana.
+- [x] **Paso 4.2:** Botón de "Recetas de Rescate (Miércoles/Jueves)" según sobras de nevera/congelador, antigüedad de los tápers cocinados y huecos de macros/vitaminas/minerales de la semana. *(Implementado en `2adc84c` y validado por el usuario el 01/11/2026)*
 - [ ] **Paso 4.3:** Asistente por Voz y Chat Contextual: permite pedir recetas adaptadas al momento, añadir cosas a la lista de la compra hablando o preguntar "¿Qué día cocinamos tal plato?" consultando el historial y la nevera. También se le puede decir que un alimento o táper ya se consumió y que lo actualice el almacenaje donde toque (nevera, despensa, congelador o tápers). Por último, que marque una receta o táper como "Check Comido" si se le pide (descuenta 1 comida de pareja y suma nutrientes del día). 
 
 ### Fase 5: Cuadro de Mando Nutricional, Vitaminico y Clinico Completo

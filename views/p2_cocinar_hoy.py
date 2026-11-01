@@ -1309,11 +1309,11 @@ def _render_recetas_rescate(inventario: list[dict], recetas: list[dict]) -> None
         if str(item.get("ubicacion") or "") == "congelador"
     ]
     tapers_ordenados = sorted(tapers, key=_dias_para_ordenar, reverse=True)
-    urgentes = [item for item in tapers_ordenados if _dias_para_ordenar(item) >= 3]
+    urgentes = [item for item in tapers_ordenados if _dias_para_ordenar(item) >= 5]
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Tápers", f"{len(tapers)}")
-    c2.metric("Urgentes ≥3 días", f"{len(urgentes)}")
+    c2.metric("Prioridad roja ≥5 días", f"{len(urgentes)}")
     c3.metric("Nevera", f"{len(nevera)}")
     c4.metric("Congelador", f"{len(congelador)}")
 

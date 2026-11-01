@@ -1506,6 +1506,13 @@ def _normalizar_receta_rescate(datos: dict, inventario: list[dict]) -> dict | No
     comidas = max(1, min(20, comidas))
 
     nutricion_cruda = datos.get("nutricion_por_comida_pareja") or {}
+    if isinstance(nutricion_cruda, str):
+        try:
+            nutricion_cruda = json.loads(nutricion_cruda)
+        except (TypeError, ValueError):
+            nutricion_cruda = {}
+    if not isinstance(nutricion_cruda, dict):
+        nutricion_cruda = {}
     nutricion = {}
     for clave in CLAVES_NUTRICION:
         valor = _numero_positivo(nutricion_cruda.get(clave))
